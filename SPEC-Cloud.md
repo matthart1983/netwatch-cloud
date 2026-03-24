@@ -1,8 +1,60 @@
 # NetWatch Cloud — Technical Specification
 
-**Scope:** MVP as defined in Roadmap-Adjusted.md — a lightweight Linux agent daemon, HTTPS ingest API, PostgreSQL storage, simple web dashboard with 24–72h history, and email + Slack alerting for 5 core metrics. Nothing more.
+**Scope:** MVP as defined in Roadmap-Adjusted.md — a lightweight Linux agent daemon, HTTPS ingest API, PostgreSQL storage, simple web dashboard with 24–72h history, and email + Slack alerting for core metrics.
 
 **Audience:** Solo founder (Matt) building and shipping this in 4–8 weeks.
+
+**Repository:** https://github.com/matthart1983/netwatch-cloud (private)
+
+---
+
+## Build Progress
+
+| # | Item | Status | Notes |
+|---|------|--------|-------|
+| 1 | `netwatch-core` shared library | ✅ Done | Types, platform collectors, health, system metrics |
+| 2 | `netwatch-agent` Linux daemon | ✅ Done | Collects CPU, memory, load avg, interfaces, health, connections |
+| 3 | Agent self-update (`netwatch-agent update`) | ✅ Done | Downloads from GitHub releases, replaces binary, restarts systemd |
+| 4 | Agent CLI (`status`, `config`, `help`, `version`) | ✅ Done | |
+| 5 | Agent Docker image | ✅ Done | `Dockerfile.agent`, env var overrides for hostname/OS |
+| 6 | `agent.sh` local manager script | ✅ Done | start/stop/update/logs/status for Docker-based agents |
+| 7 | Install script (`install.sh`) | ✅ Done | `--api-key`, `--endpoint`, `--update`, `--remove` modes |
+| 8 | Install script served from API (`/install.sh`) | ✅ Done | Embedded via `include_str!` |
+| 9 | `netwatch-cloud` API server (Axum) | ✅ Done | All endpoints operational |
+| 10 | Database schema + migrations | ✅ Done | 2 migrations (initial + system metrics) |
+| 11 | Auth (register, login, JWT) | ✅ Done | bcrypt passwords, JWT access tokens |
+| 12 | Agent auth (API keys) | ✅ Done | bcrypt-hashed keys, prefix-based lookup |
+| 13 | Ingest endpoint | ✅ Done | Handles host upsert, snapshots, interface metrics, system metrics |
+| 14 | Host list + detail API | ✅ Done | Includes CPU, memory, OS, kernel, uptime |
+| 15 | Metrics query API | ✅ Done | Time range filtering, all metric types |
+| 16 | API key management (CRUD) | ✅ Done | |
+| 17 | Alert engine (background task) | ✅ Done | 30s eval loop, state machine, host offline detection |
+| 18 | Alert rules CRUD API | ✅ Done | |
+| 19 | Alert history API | ✅ Done | |
+| 20 | Default alert rules on signup | ✅ Done | Host offline, packet loss, gateway/DNS latency |
+| 21 | Slack notifications | ✅ Done | Webhook-based |
+| 22 | Email notifications (Resend) | ✅ Done | |
+| 23 | Web frontend (Next.js 16) | ✅ Done | Dark theme, Recharts, 7 pages |
+| 24 | Login / Register pages | ✅ Done | Shows API key + install instructions on register |
+| 25 | Host list (dashboard) page | ✅ Done | Cards with status, OS, cores, RAM |
+| 26 | Host detail page with charts | ✅ Done | Latency, packet loss, connections, CPU, memory, load avg |
+| 27 | Alerts page (rules + history) | ✅ Done | Create/toggle/delete rules, event history |
+| 28 | Settings page | ✅ Done | API key management, install + agent command reference |
+| 29 | CI (GitHub Actions) | ✅ Done | Check/test on push, cross-compile releases on tag |
+| 30 | Railway deployment | ✅ Done | API + Web + Postgres, all live |
+| 31 | Stripe billing | ❌ Not started | |
+| 32 | Data retention cleanup job | ❌ Not started | |
+| 33 | Rate limiting | ❌ Not started | |
+| 34 | Landing page | ❌ Not started | |
+
+### Live URLs
+
+| Service | URL |
+|---------|-----|
+| API | https://netwatch-api-production.up.railway.app |
+| Web | https://netwatch-web-production.up.railway.app |
+| Health | https://netwatch-api-production.up.railway.app/health |
+| Install script | https://netwatch-api-production.up.railway.app/install.sh |
 
 ---
 
@@ -60,12 +112,16 @@ The agent collects exactly 5 metric groups. Nothing else.
 | # | Metric | Source | Requires Root | Collection Interval |
 |---|--------|--------|---------------|---------------------|
 | 1 | **Interface status** (up/down per interface) | `/sys/class/net/*/operstate` | No | 15s |
-| 2 | **Packet loss** to gateway and primary DNS | `ping -c 3 -W 1 <target>` | No (uses unprivileged ICMP on Linux 5.7+, falls back to `ping` binary) | 30s |
-| 3 | **Latency** (RTT ms) to gateway and primary DNS | Same ping as above | No | 30s |
-| 4 | **Connection count** (total established TCP connections) | `/proc/net/tcp` + `/proc/net/tcp6` line count | No | 15s |
-| 5 | **Heartbeat** (agent is alive, with host metadata) | Implicit in every POST | No | 15s |
+| 2 | **Interface bandwidth** (RX/TX bytes, packets, errors, drops) | `/sys/class/net/*/statistics/` | No | 15s |
+| 3 | **Packet loss** to gateway and primary DNS | `ping -c 3 -W 1 <target>` | No | 30s |
+| 4 | **Latency** (RTT ms) to gateway and primary DNS | Same ping as above | No | 30s |
+| 5 | **Connection count** (total established TCP connections) | `/proc/net/tcp` + `/proc/net/tcp6` | No | 15s |
+| 6 | **CPU usage** (%) | `/proc/stat` (200ms sample) | No | 15s |
+| 7 | **Memory** (total, used, available bytes) | `/proc/meminfo` | No | 15s |
+| 8 | **Load average** (1m, 5m, 15m) | `/proc/loadavg` | No | 15s |
+| 9 | **Heartbeat** (agent is alive, with host metadata) | Implicit in every POST | No | 15s |
 
-Additionally, each snapshot includes **interface bandwidth** (RX/TX bytes delta since last snapshot) derived from `/sys/class/net/*/statistics/{rx,tx}_bytes`.
+Host metadata collected once on startup: hostname, OS, kernel, uptime, CPU model, CPU cores, total memory.
 
 ### 2.2 What It Reuses From NetWatch TUI
 
@@ -113,8 +169,23 @@ Environment variables override config file values:
 - `NETWATCH_ENDPOINT` → `endpoint`
 - `NETWATCH_API_KEY` → `api_key`
 - `NETWATCH_INTERVAL` → `interval_secs`
+- `NETWATCH_HOSTNAME` → override auto-detected hostname (useful in Docker)
+- `NETWATCH_OS` → override auto-detected OS (useful in Docker)
 
-### 2.4 Lifecycle
+### 2.4 Agent CLI
+
+```
+netwatch-agent              Run the agent daemon
+netwatch-agent update       Download and install the latest version (requires sudo)
+netwatch-agent status       Show version, service state, host ID
+netwatch-agent config       Show current configuration
+netwatch-agent version      Print version
+netwatch-agent help         Show usage
+```
+
+The `update` subcommand downloads the latest binary from GitHub releases, replaces itself, and restarts the systemd service. Docker detection appends "(Docker)" to the OS string automatically.
+
+### 2.5 Lifecycle
 
 ```
                   ┌──────────────┐
@@ -1172,45 +1243,43 @@ This list exists to prevent scope creep. None of these will be built for v1.
 
 A strict build sequence, designed to produce a working system as early as possible.
 
-### Week 1–2: Core Infrastructure
-1. Create `crates/netwatch-core` — extract `platform::linux`, health ping, gateway/DNS detection
-2. Create `netwatch-agent` — daemon that collects and prints JSON to stdout (no networking yet)
-3. Create `netwatch-cloud` — Axum skeleton with `/health` endpoint
-4. Database schema + migrations
-5. Ingest endpoint (accept JSON, write to Postgres)
-6. Agent → API: HTTPS POST with API key auth
+### Week 1–2: Core Infrastructure ✅ COMPLETE
+1. ✅ Create `crates/netwatch-core` — shared types, platform collectors, health, system metrics
+2. ✅ Create `netwatch-agent` — daemon collecting 9 metric types via HTTPS POST
+3. ✅ Create `netwatch-cloud` — Axum server with all endpoints
+4. ✅ Database schema + migrations (initial + system metrics)
+5. ✅ Ingest endpoint (host upsert, snapshots, interfaces, system metrics)
+6. ✅ Agent → API: HTTPS POST with API key auth + buffering
 
-**Milestone:** Agent running on a Linux box, sending data to a local API server, data visible in Postgres.
+### Week 3–4: Web Dashboard ✅ COMPLETE
+7. ✅ Auth endpoints (register, login, JWT)
+8. ✅ Host list + host detail API endpoints (with CPU, memory, load avg)
+9. ✅ Metrics query endpoint with time range filtering
+10. ✅ Next.js 16 app: login, register, host list, host detail with 6 chart types
+11. ✅ API key management (create, list, revoke)
 
-### Week 3–4: Web Dashboard
-7. Auth endpoints (register, login, JWT)
-8. Host list + host detail API endpoints
-9. Metrics query endpoint with downsampling
-10. Next.js app: login, register, host list, host detail with charts
-11. API key management (create, list, revoke)
+### Week 5–6: Alerting ✅ COMPLETE
+12. ✅ Alert rules CRUD (API + frontend)
+13. ✅ Alert engine background task (30s evaluation loop)
+14. ✅ Alert state machine (OK → Pending → Firing → Resolved)
+15. ✅ Email notifications via Resend
+16. ✅ Slack notifications via webhook
+17. ✅ Default alert rules created on signup (4 rules)
+18. ✅ Alert history page with filtering
 
-**Milestone:** Sign up in browser, get API key, install agent, see host data in browser.
+### Week 7–8: Polish & Launch — IN PROGRESS
+19. ✅ Install script (`curl | sh` with `--update` and `--remove`)
+20. ✅ Agent self-update (`netwatch-agent update`)
+21. ✅ Agent CLI (status, config, version, help)
+22. ✅ Docker image + `agent.sh` manager script
+23. ✅ Install script served from API (`/install.sh`)
+24. ✅ CI/CD (GitHub Actions: check/test + cross-compiled releases)
+25. ✅ Deploy to Railway (API + Web + Postgres)
+26. ✅ Host offline detection (alert engine, 5 min timeout)
+27. ❌ Stripe integration (trial + subscription)
+28. ❌ Data retention cleanup job
+29. ❌ Rate limiting
+30. ❌ Landing page
+31. ❌ Test with 3–5 design partners
 
-### Week 5–6: Alerting
-12. Alert rules CRUD (API + frontend)
-13. Alert engine background task (evaluation loop)
-14. Alert state machine
-15. Email notifications via Resend
-16. Slack notifications via webhook
-17. Default alert rules created on signup
-18. Alert history page
-
-**Milestone:** Get emailed/Slacked when a host goes offline or packet loss spikes.
-
-### Week 7–8: Polish & Launch
-19. Install script (`curl | sh`)
-20. Stripe integration (trial + subscription)
-21. Data retention cleanup job
-22. Rate limiting
-23. Host offline detection
-24. Error handling, edge cases, input validation
-25. Landing page (can be a simple static page on the same domain)
-26. Deploy to Railway
-27. Test with 3–5 design partners
-
-**Milestone:** Live product accepting real customers at $49/mo.
+**Next up:** Stripe billing, data retention, rate limiting, landing page.
