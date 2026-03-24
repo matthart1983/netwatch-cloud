@@ -31,19 +31,35 @@ pub fn get_or_create_host_id() -> Result<Uuid> {
 }
 
 pub fn collect_host_info(host_id: Uuid) -> HostInfo {
-    let hostname = fs::read_to_string("/proc/sys/kernel/hostname")
-        .or_else(|_| fs::read_to_string("/etc/hostname"))
-        .map(|s| s.trim().to_string())
-        .unwrap_or_else(|_| "unknown".to_string());
+    // Env vars override auto-detection (useful when running in Docker)
+    let hostname = std::env::var("NETWATCH_HOSTNAME").unwrap_or_else(|_| {
+        fs::read_to_string("/proc/sys/kernel/hostname")
+            .or_else(|_| fs::read_to_string("/etc/hostname"))
+            .map(|s| s.trim().to_string())
+            .unwrap_or_else(|_| "unknown".to_string())
+    });
 
-    let os = fs::read_to_string("/etc/os-release")
-        .ok()
-        .and_then(|contents| {
-            contents
-                .lines()
-                .find(|l| l.starts_with("PRETTY_NAME="))
-                .map(|l| l.trim_start_matches("PRETTY_NAME=").trim_matches('"').to_string())
-        });
+    let in_docker = Path::new("/.dockerenv").exists()
+        || fs::read_to_string("/proc/1/cgroup")
+            .map(|s| s.contains("docker") || s.contains("containerd"))
+            .unwrap_or(false);
+
+    let os = std::env::var("NETWATCH_OS").ok().or_else(|| {
+        let detected = fs::read_to_string("/etc/os-release")
+            .ok()
+            .and_then(|contents| {
+                contents
+                    .lines()
+                    .find(|l| l.starts_with("PRETTY_NAME="))
+                    .map(|l| l.trim_start_matches("PRETTY_NAME=").trim_matches('"').to_string())
+            });
+        match (detected, in_docker) {
+            (Some(os), true) => Some(format!("{} (Docker)", os)),
+            (Some(os), false) => Some(os),
+            (None, true) => Some("Linux (Docker)".to_string()),
+            (None, false) => None,
+        }
+    });
 
     let kernel = std::process::Command::new("uname")
         .arg("-r")
