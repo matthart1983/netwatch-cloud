@@ -6,6 +6,7 @@ use tower_http::cors::CorsLayer;
 use tower_http::trace::TraceLayer;
 use tracing::info;
 
+mod alerts;
 mod auth;
 mod config;
 mod routes;
@@ -44,6 +45,12 @@ async fn main() -> Result<()> {
 
     let state = Arc::new(AppState { db: pool, config: cfg });
 
+    // Spawn alert engine background task
+    let alert_state = state.clone();
+    tokio::spawn(async move {
+        alerts::engine::run(alert_state).await;
+    });
+
     let app = Router::new()
         .route("/health", get(routes::health::health_check))
         .route("/api/v1/ingest", post(routes::ingest::ingest))
@@ -54,6 +61,9 @@ async fn main() -> Result<()> {
         .route("/api/v1/hosts/{id}/metrics", get(routes::hosts::get_metrics))
         .route("/api/v1/account/api-keys", get(routes::api_keys::list_keys).post(routes::api_keys::create_key))
         .route("/api/v1/account/api-keys/{id}", axum::routing::delete(routes::api_keys::delete_key))
+        .route("/api/v1/alerts/rules", get(routes::alerts::list_rules).post(routes::alerts::create_rule))
+        .route("/api/v1/alerts/rules/{id}", axum::routing::put(routes::alerts::update_rule).delete(routes::alerts::delete_rule))
+        .route("/api/v1/alerts/history", get(routes::alerts::alert_history))
         .layer(CorsLayer::permissive())
         .layer(TraceLayer::new_for_http())
         .with_state(state);

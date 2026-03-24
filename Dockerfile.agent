@@ -1,0 +1,15 @@
+FROM rust:1-bookworm AS builder
+WORKDIR /build
+COPY Cargo.toml Cargo.lock ./
+COPY crates/ crates/
+COPY netwatch-agent/ netwatch-agent/
+# Create dummy netwatch-cloud for workspace
+RUN mkdir -p netwatch-cloud/src && echo "fn main() {}" > netwatch-cloud/src/main.rs
+COPY netwatch-cloud/Cargo.toml netwatch-cloud/Cargo.toml
+RUN cargo build --release --package netwatch-agent
+RUN cp target/release/netwatch-agent /netwatch-agent
+
+FROM debian:bookworm-slim
+RUN apt-get update && apt-get install -y --no-install-recommends iputils-ping iproute2 ca-certificates && rm -rf /var/lib/apt/lists/*
+COPY --from=builder /netwatch-agent /usr/local/bin/netwatch-agent
+ENTRYPOINT ["netwatch-agent"]

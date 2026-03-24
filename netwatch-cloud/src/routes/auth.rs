@@ -63,6 +63,30 @@ pub async fn register(
     .await
     .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
+    // Create default alert rules
+    let default_rules: &[(&str, &str, &str, Option<f64>, Option<&str>, i32, &str)] = &[
+        ("Host offline", "host_status", "changes_to", None, Some("offline"), 60, "critical"),
+        ("High packet loss", "gateway_loss_pct", ">", Some(5.0), None, 60, "warning"),
+        ("High gateway latency", "gateway_rtt_ms", ">", Some(100.0), None, 60, "warning"),
+        ("High DNS latency", "dns_rtt_ms", ">", Some(200.0), None, 60, "info"),
+    ];
+
+    for (name, metric, condition, threshold, threshold_str, duration_secs, severity) in default_rules {
+        let _ = sqlx::query(
+            "INSERT INTO alert_rules (account_id, name, metric, condition, threshold, threshold_str, duration_secs, severity) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)"
+        )
+        .bind(account_id)
+        .bind(name)
+        .bind(metric)
+        .bind(condition)
+        .bind(threshold)
+        .bind(threshold_str)
+        .bind(duration_secs)
+        .bind(severity)
+        .execute(&state.db)
+        .await;
+    }
+
     Ok(Json(RegisterResponse {
         account_id,
         api_key: raw_key,

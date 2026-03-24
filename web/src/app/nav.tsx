@@ -19,6 +19,9 @@ export function Nav() {
                 <Link href="/" className="text-sm text-zinc-400 hover:text-zinc-100">
                   Hosts
                 </Link>
+                <Link href="/alerts" className="text-sm text-zinc-400 hover:text-zinc-100">
+                  Alerts
+                </Link>
                 <Link href="/settings" className="text-sm text-zinc-400 hover:text-zinc-100">
                   Settings
                 </Link>

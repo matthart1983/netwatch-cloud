@@ -21,11 +21,14 @@ async function fetchAPI(path: string, options: RequestInit = {}) {
   }
 
   if (!res.ok) {
-    throw new Error(`API error: ${res.status}`)
+    const text = await res.text().catch(() => '')
+    throw new Error(text || `API error: ${res.status}`)
   }
 
   if (res.status === 204) return null
-  return res.json()
+  const text = await res.text()
+  if (!text) return null
+  return JSON.parse(text)
 }
 
 export async function register(email: string, password: string) {
@@ -105,4 +108,69 @@ export async function createApiKey(): Promise<{ id: string; api_key: string }> {
 
 export async function deleteApiKey(id: string): Promise<void> {
   await fetchAPI(`/api/v1/account/api-keys/${id}`, { method: 'DELETE' })
+}
+
+export interface AlertRule {
+  id: string
+  host_id: string | null
+  name: string
+  metric: string
+  condition: string
+  threshold: number | null
+  threshold_str: string | null
+  duration_secs: number
+  severity: string
+  enabled: boolean
+  created_at: string
+}
+
+export interface AlertEvent {
+  id: number
+  rule_id: string
+  host_id: string
+  state: string
+  metric_value: number | null
+  message: string
+  created_at: string
+}
+
+export async function getAlertRules(): Promise<AlertRule[]> {
+  return fetchAPI('/api/v1/alerts/rules')
+}
+
+export async function createAlertRule(rule: {
+  name: string
+  metric: string
+  condition: string
+  threshold?: number
+  threshold_str?: string
+  duration_secs?: number
+  severity?: string
+  host_id?: string
+}): Promise<AlertRule> {
+  return fetchAPI('/api/v1/alerts/rules', {
+    method: 'POST',
+    body: JSON.stringify(rule),
+  })
+}
+
+export async function updateAlertRule(id: string, update: {
+  enabled?: boolean
+  threshold?: number
+  duration_secs?: number
+  severity?: string
+}): Promise<void> {
+  await fetchAPI(`/api/v1/alerts/rules/${id}`, {
+    method: 'PUT',
+    body: JSON.stringify(update),
+  })
+}
+
+export async function deleteAlertRule(id: string): Promise<void> {
+  await fetchAPI(`/api/v1/alerts/rules/${id}`, { method: 'DELETE' })
+}
+
+export async function getAlertHistory(hostId?: string): Promise<AlertEvent[]> {
+  const params = hostId ? `?host_id=${hostId}` : ''
+  return fetchAPI(`/api/v1/alerts/history${params}`)
 }

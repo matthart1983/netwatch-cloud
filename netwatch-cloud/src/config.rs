@@ -15,8 +15,13 @@ impl ServerConfig {
                 .context("DATABASE_URL must be set")?,
             jwt_secret: std::env::var("JWT_SECRET")
                 .context("JWT_SECRET must be set")?,
-            bind_addr: std::env::var("BIND_ADDR")
-                .unwrap_or_else(|_| "0.0.0.0:3001".to_string()),
+            bind_addr: std::env::var("BIND_ADDR").unwrap_or_else(|_| {
+                // Railway sets PORT env var
+                match std::env::var("PORT") {
+                    Ok(port) => format!("0.0.0.0:{}", port),
+                    Err(_) => "0.0.0.0:3001".to_string(),
+                }
+            }),
             resend_api_key: std::env::var("RESEND_API_KEY").ok(),
         })
     }
