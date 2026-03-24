@@ -9,6 +9,30 @@ mod sender;
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    let args: Vec<String> = std::env::args().collect();
+
+    if args.iter().any(|a| a == "--version" || a == "-V") {
+        println!("netwatch-agent {}", env!("CARGO_PKG_VERSION"));
+        return Ok(());
+    }
+
+    if args.iter().any(|a| a == "--help" || a == "-h") {
+        println!("netwatch-agent {} — network metrics collector", env!("CARGO_PKG_VERSION"));
+        println!();
+        println!("USAGE:");
+        println!("  netwatch-agent              Run the agent daemon");
+        println!("  netwatch-agent --version    Print version");
+        println!();
+        println!("CONFIGURATION:");
+        println!("  Config file:    /etc/netwatch-agent/config.toml");
+        println!("  Or env vars:    NETWATCH_API_KEY, NETWATCH_ENDPOINT, NETWATCH_INTERVAL");
+        println!();
+        println!("UPDATE:");
+        println!("  Docker:    docker pull netwatch-agent && docker restart netwatch-agent");
+        println!("  Native:    curl -sSL <api-url>/install.sh | sudo sh -s -- --api-key KEY --endpoint URL");
+        return Ok(());
+    }
+
     tracing_subscriber::fmt()
         .with_target(false)
         .with_env_filter(
