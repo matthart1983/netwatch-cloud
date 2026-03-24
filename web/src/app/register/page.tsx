@@ -48,7 +48,7 @@ export default function RegisterPage() {
         </button>
         <p className="text-zinc-400 text-sm mt-4 mb-2">Install the agent on your Linux server:</p>
         <div className="bg-zinc-900 border border-zinc-700 rounded p-3 font-mono text-xs break-all">
-          curl -sSL https://install.netwatch.dev | sh -s -- --api-key {apiKey}
+          curl -sSL https://netwatch-api-production.up.railway.app/install.sh | sudo sh -s -- --api-key {apiKey} --endpoint https://netwatch-api-production.up.railway.app/api/v1/ingest
         </div>
         <button
           onClick={() => router.push('/')}

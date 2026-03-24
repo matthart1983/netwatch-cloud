@@ -112,7 +112,7 @@ export default function SettingsPage() {
         <h2 className="text-lg font-semibold mb-4">Install Agent</h2>
         <p className="text-zinc-400 text-sm mb-2">Run this on your Linux server:</p>
         <div className="bg-zinc-900 border border-zinc-800 rounded p-3 font-mono text-xs break-all">
-          curl -sSL https://install.netwatch.dev | sh -s -- --api-key YOUR_API_KEY
+          curl -sSL https://netwatch-api-production.up.railway.app/install.sh | sudo sh -s -- --api-key YOUR_API_KEY --endpoint https://netwatch-api-production.up.railway.app/api/v1/ingest
         </div>
       </section>
     </div>

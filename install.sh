@@ -49,15 +49,31 @@ if [ "$EUID" -ne 0 ]; then
 fi
 
 # Download binary
-DOWNLOAD_URL="https://github.com/matthart1983/netwatch-cloud/releases/latest/download/netwatch-agent-linux-${ARCH}"
+REPO="matthart1983/netwatch-cloud"
+DOWNLOAD_URL="https://github.com/${REPO}/releases/latest/download/netwatch-agent-linux-${ARCH}"
 echo "Downloading agent from $DOWNLOAD_URL ..."
 
 if command -v curl &> /dev/null; then
-  curl -fsSL -o /tmp/netwatch-agent "$DOWNLOAD_URL"
+  HTTP_CODE=$(curl -fsSL -o /tmp/netwatch-agent -w "%{http_code}" "$DOWNLOAD_URL" 2>/dev/null)
 elif command -v wget &> /dev/null; then
   wget -qO /tmp/netwatch-agent "$DOWNLOAD_URL"
+  HTTP_CODE=$?
 else
   echo "Error: curl or wget is required"
+  exit 1
+fi
+
+if [ ! -f /tmp/netwatch-agent ] || [ ! -s /tmp/netwatch-agent ]; then
+  echo ""
+  echo "Error: Failed to download agent binary."
+  echo ""
+  echo "This can happen if:"
+  echo "  - No release has been published yet (run: git tag v0.1.0 && git push origin v0.1.0)"
+  echo "  - The repository is private"
+  echo ""
+  echo "Alternative install methods:"
+  echo "  1. Docker:  docker run -d -e NETWATCH_API_KEY=YOUR_KEY -e NETWATCH_ENDPOINT=YOUR_URL netwatch-agent"
+  echo "  2. Source:   cargo build --release --package netwatch-agent && sudo cp target/release/netwatch-agent /usr/local/bin/"
   exit 1
 fi
 
