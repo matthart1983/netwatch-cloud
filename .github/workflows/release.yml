@@ -1,0 +1,89 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build-agent:
+    name: Build Agent (${{ matrix.target }})
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-gnu
+            artifact: netwatch-agent-linux-x86_64
+          - target: aarch64-unknown-linux-gnu
+            artifact: netwatch-agent-linux-aarch64
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Install cross-compilation tools
+        run: |
+          sudo apt-get update
+          if [ "${{ matrix.target }}" = "aarch64-unknown-linux-gnu" ]; then
+            sudo apt-get install -y gcc-aarch64-linux-gnu
+          fi
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.target }}
+
+      - name: Build
+        env:
+          CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: aarch64-linux-gnu-gcc
+        run: |
+          cargo build --release --package netwatch-agent --target ${{ matrix.target }}
+          cp target/${{ matrix.target }}/release/netwatch-agent ${{ matrix.artifact }}
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: ${{ matrix.artifact }}
+
+  build-cloud:
+    name: Build Cloud Server
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Build
+        run: |
+          cargo build --release --package netwatch-cloud
+          cp target/release/netwatch-cloud netwatch-cloud-linux-x86_64
+      - uses: actions/upload-artifact@v4
+        with:
+          name: netwatch-cloud-linux-x86_64
+          path: netwatch-cloud-linux-x86_64
+
+  release:
+    name: Create Release
+    needs: [build-agent, build-cloud]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          files: |
+            artifacts/netwatch-agent-linux-x86_64/netwatch-agent-linux-x86_64
+            artifacts/netwatch-agent-linux-aarch64/netwatch-agent-linux-aarch64
+            artifacts/netwatch-cloud-linux-x86_64/netwatch-cloud-linux-x86_64
+            install.sh

@@ -1,0 +1,8 @@
+/target
+.env
+*.swp
+*.swo
+.DS_Store
+node_modules/
+.next/
+netwatch-cloud/.env

@@ -1,0 +1,20 @@
+[Unit]
+Description=NetWatch Agent — network metrics collector
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/netwatch-agent
+Restart=always
+RestartSec=5
+EnvironmentFile=-/etc/netwatch-agent/env
+
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+ReadWritePaths=/var/lib/netwatch-agent
+PrivateTmp=yes
+
+[Install]
+WantedBy=multi-user.target

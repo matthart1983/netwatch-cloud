@@ -1,0 +1,7 @@
+[workspace]
+members = [
+    "crates/netwatch-core",
+    "netwatch-agent",
+    "netwatch-cloud",
+]
+resolver = "2"
