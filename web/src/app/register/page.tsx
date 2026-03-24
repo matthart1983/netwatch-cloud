@@ -50,6 +50,15 @@ export default function RegisterPage() {
         <div className="bg-zinc-900 border border-zinc-700 rounded p-3 font-mono text-xs break-all">
           curl -sSL https://netwatch-api-production.up.railway.app/install.sh | sudo sh -s -- --api-key {apiKey} --endpoint https://netwatch-api-production.up.railway.app/api/v1/ingest
         </div>
+        <p className="text-zinc-400 text-sm mt-4 mb-2">After install, manage with:</p>
+        <div className="bg-zinc-900 border border-zinc-700 rounded p-3 font-mono text-xs space-y-1">
+          <div><span className="text-zinc-500"># Check status</span></div>
+          <div>netwatch-agent status</div>
+          <div className="pt-1"><span className="text-zinc-500"># Update to latest version</span></div>
+          <div>sudo netwatch-agent update</div>
+          <div className="pt-1"><span className="text-zinc-500"># View logs</span></div>
+          <div>journalctl -u netwatch-agent -f</div>
+        </div>
         <button
           onClick={() => router.push('/')}
           className="mt-6 bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-2 rounded text-sm"

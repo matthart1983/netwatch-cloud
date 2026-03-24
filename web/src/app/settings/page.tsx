@@ -108,11 +108,27 @@ export default function SettingsPage() {
         </button>
       </section>
 
-      <section>
+      <section className="mb-8">
         <h2 className="text-lg font-semibold mb-4">Install Agent</h2>
-        <p className="text-zinc-400 text-sm mb-2">Run this on your Linux server:</p>
+        <p className="text-zinc-400 text-sm mb-2">Run this on your Linux server (replace YOUR_API_KEY with a key from above):</p>
         <div className="bg-zinc-900 border border-zinc-800 rounded p-3 font-mono text-xs break-all">
           curl -sSL https://netwatch-api-production.up.railway.app/install.sh | sudo sh -s -- --api-key YOUR_API_KEY --endpoint https://netwatch-api-production.up.railway.app/api/v1/ingest
+        </div>
+      </section>
+
+      <section>
+        <h2 className="text-lg font-semibold mb-4">Agent Commands</h2>
+        <div className="bg-zinc-900 border border-zinc-800 rounded p-3 font-mono text-xs space-y-1">
+          <div><span className="text-zinc-500"># Check status</span></div>
+          <div>netwatch-agent status</div>
+          <div className="pt-1"><span className="text-zinc-500"># View config</span></div>
+          <div>netwatch-agent config</div>
+          <div className="pt-1"><span className="text-zinc-500"># Update to latest version</span></div>
+          <div>sudo netwatch-agent update</div>
+          <div className="pt-1"><span className="text-zinc-500"># View logs</span></div>
+          <div>journalctl -u netwatch-agent -f</div>
+          <div className="pt-1"><span className="text-zinc-500"># Remove agent</span></div>
+          <div>curl -sSL https://netwatch-api-production.up.railway.app/install.sh | sudo sh -s -- --remove</div>
         </div>
       </section>
     </div>
