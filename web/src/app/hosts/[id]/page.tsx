@@ -15,6 +15,12 @@ const RANGES: { label: string; value: TimeRange; hours: number }[] = [
   { label: '72h', value: '72h', hours: 72 },
 ]
 
+function formatBytes(bytes: number): string {
+  if (bytes >= 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GB`
+  if (bytes >= 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(0)} MB`
+  return `${(bytes / 1024).toFixed(0)} KB`
+}
+
 export default function HostDetailPage() {
   const { id } = useParams<{ id: string }>()
   const { token, isLoading: authLoading } = useAuth()
@@ -57,6 +63,12 @@ export default function HostDetailPage() {
     dns_rtt: p.dns_rtt_ms,
     loss: p.gateway_loss_pct,
     connections: p.connection_count,
+    cpu: p.cpu_usage_pct,
+    mem_used: p.memory_used_bytes ? p.memory_used_bytes / (1024 * 1024 * 1024) : null,
+    mem_avail: p.memory_available_bytes ? p.memory_available_bytes / (1024 * 1024 * 1024) : null,
+    load_1m: p.load_avg_1m,
+    load_5m: p.load_avg_5m,
+    load_15m: p.load_avg_15m,
   }))
 
   return (
@@ -68,10 +80,12 @@ export default function HostDetailPage() {
         <span className="text-zinc-400 text-sm">{host.is_online ? 'Online' : 'Offline'}</span>
       </div>
 
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+      <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4 mb-6">
         <Stat label="OS" value={host.os || '—'} />
         <Stat label="Kernel" value={host.kernel || '—'} />
-        <Stat label="Agent" value={host.agent_version ? `v${host.agent_version}` : '—'} />
+        <Stat label="CPU" value={host.cpu_model ? host.cpu_model.replace(/\(R\)|\(TM\)/g, '').split('@')[0].trim() : '—'} />
+        <Stat label="Cores" value={host.cpu_cores?.toString() || '—'} />
+        <Stat label="Memory" value={host.memory_total_bytes ? formatBytes(host.memory_total_bytes) : '—'} />
         <Stat label="Uptime" value={host.uptime_secs ? formatUptime(host.uptime_secs) : '—'} />
       </div>
 
@@ -124,6 +138,45 @@ export default function HostDetailPage() {
                 <YAxis stroke="#666" tick={{ fontSize: 11 }} />
                 <Tooltip contentStyle={{ background: '#1a1a1a', border: '1px solid #333', fontSize: 12 }} />
                 <Line type="monotone" dataKey="connections" stroke="#a78bfa" dot={false} strokeWidth={1.5} name="Connections" />
+              </LineChart>
+            </ResponsiveContainer>
+          </ChartCard>
+
+          <ChartCard title="CPU Usage (%)">
+            <ResponsiveContainer width="100%" height={150}>
+              <LineChart data={chartData}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#333" />
+                <XAxis dataKey="time" stroke="#666" tick={{ fontSize: 11 }} />
+                <YAxis stroke="#666" tick={{ fontSize: 11 }} domain={[0, 100]} />
+                <Tooltip contentStyle={{ background: '#1a1a1a', border: '1px solid #333', fontSize: 12 }} />
+                <Line type="monotone" dataKey="cpu" stroke="#fbbf24" dot={false} strokeWidth={1.5} name="CPU %" />
+              </LineChart>
+            </ResponsiveContainer>
+          </ChartCard>
+
+          <ChartCard title="Memory Usage (GB)">
+            <ResponsiveContainer width="100%" height={150}>
+              <LineChart data={chartData}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#333" />
+                <XAxis dataKey="time" stroke="#666" tick={{ fontSize: 11 }} />
+                <YAxis stroke="#666" tick={{ fontSize: 11 }} />
+                <Tooltip contentStyle={{ background: '#1a1a1a', border: '1px solid #333', fontSize: 12 }} />
+                <Line type="monotone" dataKey="mem_used" stroke="#f472b6" dot={false} strokeWidth={1.5} name="Used (GB)" />
+                <Line type="monotone" dataKey="mem_avail" stroke="#38bdf8" dot={false} strokeWidth={1.5} name="Available (GB)" />
+              </LineChart>
+            </ResponsiveContainer>
+          </ChartCard>
+
+          <ChartCard title="Load Average">
+            <ResponsiveContainer width="100%" height={150}>
+              <LineChart data={chartData}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#333" />
+                <XAxis dataKey="time" stroke="#666" tick={{ fontSize: 11 }} />
+                <YAxis stroke="#666" tick={{ fontSize: 11 }} />
+                <Tooltip contentStyle={{ background: '#1a1a1a', border: '1px solid #333', fontSize: 12 }} />
+                <Line type="monotone" dataKey="load_1m" stroke="#34d399" dot={false} strokeWidth={1.5} name="1m" />
+                <Line type="monotone" dataKey="load_5m" stroke="#fbbf24" dot={false} strokeWidth={1.5} name="5m" />
+                <Line type="monotone" dataKey="load_15m" stroke="#f87171" dot={false} strokeWidth={1.5} name="15m" />
               </LineChart>
             </ResponsiveContainer>
           </ChartCard>

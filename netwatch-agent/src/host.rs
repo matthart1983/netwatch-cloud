@@ -1,4 +1,5 @@
 use anyhow::Result;
+use netwatch_core::collectors::system;
 use netwatch_core::types::HostInfo;
 use std::fs;
 use std::path::Path;
@@ -30,7 +31,8 @@ pub fn get_or_create_host_id() -> Result<Uuid> {
 }
 
 pub fn collect_host_info(host_id: Uuid) -> HostInfo {
-    let hostname = fs::read_to_string("/etc/hostname")
+    let hostname = fs::read_to_string("/proc/sys/kernel/hostname")
+        .or_else(|_| fs::read_to_string("/etc/hostname"))
         .map(|s| s.trim().to_string())
         .unwrap_or_else(|_| "unknown".to_string());
 
@@ -54,11 +56,17 @@ pub fn collect_host_info(host_id: Uuid) -> HostInfo {
         .and_then(|s| s.split_whitespace().next()?.parse::<f64>().ok())
         .map(|v| v as u64);
 
+    let cpu_info = system::detect_cpu_info();
+    let memory_total = system::detect_memory_total();
+
     HostInfo {
         host_id,
         hostname,
         os,
         kernel,
         uptime_secs,
+        cpu_model: cpu_info.model,
+        cpu_cores: cpu_info.cores,
+        memory_total_bytes: memory_total,
     }
 }

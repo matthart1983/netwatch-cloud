@@ -23,14 +23,17 @@ pub async fn ingest(
     // Upsert host
     sqlx::query(
         r#"
-        INSERT INTO hosts (id, account_id, api_key_id, hostname, os, kernel, agent_version, uptime_secs, last_seen_at, is_online)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, now(), true)
+        INSERT INTO hosts (id, account_id, api_key_id, hostname, os, kernel, agent_version, uptime_secs, cpu_model, cpu_cores, memory_total_bytes, last_seen_at, is_online)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, now(), true)
         ON CONFLICT (id) DO UPDATE SET
             hostname = EXCLUDED.hostname,
             os = EXCLUDED.os,
             kernel = EXCLUDED.kernel,
             agent_version = EXCLUDED.agent_version,
             uptime_secs = EXCLUDED.uptime_secs,
+            cpu_model = EXCLUDED.cpu_model,
+            cpu_cores = EXCLUDED.cpu_cores,
+            memory_total_bytes = EXCLUDED.memory_total_bytes,
             last_seen_at = now(),
             is_online = true
         "#,
@@ -43,6 +46,9 @@ pub async fn ingest(
     .bind(&payload.host.kernel)
     .bind(&payload.agent_version)
     .bind(payload.host.uptime_secs.map(|v| v as i64))
+    .bind(&payload.host.cpu_model)
+    .bind(payload.host.cpu_cores.map(|v| v as i32))
+    .bind(payload.host.memory_total_bytes.map(|v| v as i64))
     .execute(&state.db)
     .await
     .map_err(|e| {
@@ -56,8 +62,8 @@ pub async fn ingest(
         // Insert snapshot
         let snapshot_id: i64 = sqlx::query_scalar(
             r#"
-            INSERT INTO snapshots (host_id, time, connection_count, gateway_ip, gateway_rtt_ms, gateway_loss_pct, dns_ip, dns_rtt_ms, dns_loss_pct)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+            INSERT INTO snapshots (host_id, time, connection_count, gateway_ip, gateway_rtt_ms, gateway_loss_pct, dns_ip, dns_rtt_ms, dns_loss_pct, cpu_usage_pct, memory_total_bytes, memory_used_bytes, memory_available_bytes, load_avg_1m, load_avg_5m, load_avg_15m)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
             RETURNING id
             "#,
         )
@@ -70,6 +76,13 @@ pub async fn ingest(
         .bind(snapshot.health.as_ref().and_then(|h| h.dns_ip.as_deref()))
         .bind(snapshot.health.as_ref().and_then(|h| h.dns_rtt_ms))
         .bind(snapshot.health.as_ref().and_then(|h| h.dns_loss_pct))
+        .bind(snapshot.system.as_ref().and_then(|s| s.cpu_usage_pct))
+        .bind(snapshot.system.as_ref().and_then(|s| s.memory_total_bytes.map(|v| v as i64)))
+        .bind(snapshot.system.as_ref().and_then(|s| s.memory_used_bytes.map(|v| v as i64)))
+        .bind(snapshot.system.as_ref().and_then(|s| s.memory_available_bytes.map(|v| v as i64)))
+        .bind(snapshot.system.as_ref().and_then(|s| s.load_avg_1m))
+        .bind(snapshot.system.as_ref().and_then(|s| s.load_avg_5m))
+        .bind(snapshot.system.as_ref().and_then(|s| s.load_avg_15m))
         .fetch_one(&state.db)
         .await
         .map_err(|e| {

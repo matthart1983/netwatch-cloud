@@ -5,6 +5,12 @@ import Link from 'next/link'
 import { useAuth } from '@/lib/auth'
 import { getHosts, Host } from '@/lib/api'
 
+function formatBytes(bytes: number): string {
+  if (bytes >= 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GB`
+  if (bytes >= 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(0)} MB`
+  return `${(bytes / 1024).toFixed(0)} KB`
+}
+
 export default function HostsPage() {
   const { token, isLoading: authLoading } = useAuth()
   const [hosts, setHosts] = useState<Host[]>([])
@@ -75,6 +81,12 @@ export default function HostsPage() {
               {host.os && <div>{host.os}</div>}
               <div>Last seen: {new Date(host.last_seen_at).toLocaleString()}</div>
               {host.agent_version && <div>Agent v{host.agent_version}</div>}
+              {(host.cpu_cores || host.memory_total_bytes) && (
+                <div className="flex gap-2">
+                  {host.cpu_cores && <span>{host.cpu_cores} cores</span>}
+                  {host.memory_total_bytes && <span>{formatBytes(host.memory_total_bytes)} RAM</span>}
+                </div>
+              )}
             </div>
           </Link>
         ))}

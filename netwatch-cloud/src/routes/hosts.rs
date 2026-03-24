@@ -21,14 +21,17 @@ pub struct HostSummary {
     pub is_online: bool,
     pub last_seen_at: DateTime<Utc>,
     pub uptime_secs: Option<i64>,
+    pub cpu_model: Option<String>,
+    pub cpu_cores: Option<i32>,
+    pub memory_total_bytes: Option<i64>,
 }
 
 pub async fn list_hosts(
     user: AuthUser,
     State(state): State<Arc<AppState>>,
 ) -> Result<Json<Vec<HostSummary>>, StatusCode> {
-    let hosts = sqlx::query_as::<_, (Uuid, String, Option<String>, Option<String>, Option<String>, bool, DateTime<Utc>, Option<i64>)>(
-        "SELECT id, hostname, os, kernel, agent_version, is_online, last_seen_at, uptime_secs FROM hosts WHERE account_id = $1 ORDER BY hostname"
+    let hosts = sqlx::query_as::<_, (Uuid, String, Option<String>, Option<String>, Option<String>, bool, DateTime<Utc>, Option<i64>, Option<String>, Option<i32>, Option<i64>)>(
+        "SELECT id, hostname, os, kernel, agent_version, is_online, last_seen_at, uptime_secs, cpu_model, cpu_cores, memory_total_bytes FROM hosts WHERE account_id = $1 ORDER BY hostname"
     )
     .bind(user.account_id)
     .fetch_all(&state.db)
@@ -37,8 +40,8 @@ pub async fn list_hosts(
 
     let result: Vec<HostSummary> = hosts
         .into_iter()
-        .map(|(id, hostname, os, kernel, agent_version, is_online, last_seen_at, uptime_secs)| {
-            HostSummary { id, hostname, os, kernel, agent_version, is_online, last_seen_at, uptime_secs }
+        .map(|(id, hostname, os, kernel, agent_version, is_online, last_seen_at, uptime_secs, cpu_model, cpu_cores, memory_total_bytes)| {
+            HostSummary { id, hostname, os, kernel, agent_version, is_online, last_seen_at, uptime_secs, cpu_model, cpu_cores, memory_total_bytes }
         })
         .collect();
 
@@ -50,8 +53,8 @@ pub async fn get_host(
     State(state): State<Arc<AppState>>,
     Path(id): Path<Uuid>,
 ) -> Result<Json<HostSummary>, StatusCode> {
-    let row = sqlx::query_as::<_, (Uuid, String, Option<String>, Option<String>, Option<String>, bool, DateTime<Utc>, Option<i64>)>(
-        "SELECT id, hostname, os, kernel, agent_version, is_online, last_seen_at, uptime_secs FROM hosts WHERE id = $1 AND account_id = $2"
+    let row = sqlx::query_as::<_, (Uuid, String, Option<String>, Option<String>, Option<String>, bool, DateTime<Utc>, Option<i64>, Option<String>, Option<i32>, Option<i64>)>(
+        "SELECT id, hostname, os, kernel, agent_version, is_online, last_seen_at, uptime_secs, cpu_model, cpu_cores, memory_total_bytes FROM hosts WHERE id = $1 AND account_id = $2"
     )
     .bind(id)
     .bind(user.account_id)
@@ -60,9 +63,9 @@ pub async fn get_host(
     .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
     .ok_or(StatusCode::NOT_FOUND)?;
 
-    let (id, hostname, os, kernel, agent_version, is_online, last_seen_at, uptime_secs) = row;
+    let (id, hostname, os, kernel, agent_version, is_online, last_seen_at, uptime_secs, cpu_model, cpu_cores, memory_total_bytes) = row;
 
-    Ok(Json(HostSummary { id, hostname, os, kernel, agent_version, is_online, last_seen_at, uptime_secs }))
+    Ok(Json(HostSummary { id, hostname, os, kernel, agent_version, is_online, last_seen_at, uptime_secs, cpu_model, cpu_cores, memory_total_bytes }))
 }
 
 #[derive(Deserialize)]
@@ -87,6 +90,12 @@ pub struct MetricPoint {
     pub dns_rtt_ms: Option<f64>,
     pub dns_loss_pct: Option<f64>,
     pub connection_count: Option<i32>,
+    pub cpu_usage_pct: Option<f64>,
+    pub memory_used_bytes: Option<i64>,
+    pub memory_available_bytes: Option<i64>,
+    pub load_avg_1m: Option<f64>,
+    pub load_avg_5m: Option<f64>,
+    pub load_avg_15m: Option<f64>,
 }
 
 pub async fn get_metrics(
@@ -113,9 +122,9 @@ pub async fn get_metrics(
     let from = query.from.unwrap_or(now - chrono::Duration::hours(24));
     let to = query.to.unwrap_or(now);
 
-    let points = sqlx::query_as::<_, (DateTime<Utc>, Option<f64>, Option<f64>, Option<f64>, Option<f64>, Option<i32>)>(
+    let points = sqlx::query_as::<_, (DateTime<Utc>, Option<f64>, Option<f64>, Option<f64>, Option<f64>, Option<i32>, Option<f64>, Option<i64>, Option<i64>, Option<f64>, Option<f64>, Option<f64>)>(
         r#"
-        SELECT time, gateway_rtt_ms, gateway_loss_pct, dns_rtt_ms, dns_loss_pct, connection_count
+        SELECT time, gateway_rtt_ms, gateway_loss_pct, dns_rtt_ms, dns_loss_pct, connection_count, cpu_usage_pct, memory_used_bytes, memory_available_bytes, load_avg_1m, load_avg_5m, load_avg_15m
         FROM snapshots
         WHERE host_id = $1 AND time >= $2 AND time <= $3
         ORDER BY time ASC
@@ -130,8 +139,8 @@ pub async fn get_metrics(
 
     let points: Vec<MetricPoint> = points
         .into_iter()
-        .map(|(time, gateway_rtt_ms, gateway_loss_pct, dns_rtt_ms, dns_loss_pct, connection_count)| {
-            MetricPoint { time, gateway_rtt_ms, gateway_loss_pct, dns_rtt_ms, dns_loss_pct, connection_count }
+        .map(|(time, gateway_rtt_ms, gateway_loss_pct, dns_rtt_ms, dns_loss_pct, connection_count, cpu_usage_pct, memory_used_bytes, memory_available_bytes, load_avg_1m, load_avg_5m, load_avg_15m)| {
+            MetricPoint { time, gateway_rtt_ms, gateway_loss_pct, dns_rtt_ms, dns_loss_pct, connection_count, cpu_usage_pct, memory_used_bytes, memory_available_bytes, load_avg_1m, load_avg_5m, load_avg_15m }
         })
         .collect();
 

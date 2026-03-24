@@ -16,6 +16,9 @@ pub struct HostInfo {
     pub os: Option<String>,
     pub kernel: Option<String>,
     pub uptime_secs: Option<u64>,
+    pub cpu_model: Option<String>,
+    pub cpu_cores: Option<u32>,
+    pub memory_total_bytes: Option<u64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -24,6 +27,7 @@ pub struct Snapshot {
     pub interfaces: Vec<InterfaceMetric>,
     pub health: Option<HealthMetric>,
     pub connection_count: Option<u32>,
+    pub system: Option<SystemMetric>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -50,6 +54,17 @@ pub struct HealthMetric {
     pub dns_ip: Option<String>,
     pub dns_rtt_ms: Option<f64>,
     pub dns_loss_pct: Option<f64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SystemMetric {
+    pub cpu_usage_pct: Option<f64>,
+    pub memory_total_bytes: Option<u64>,
+    pub memory_used_bytes: Option<u64>,
+    pub memory_available_bytes: Option<u64>,
+    pub load_avg_1m: Option<f64>,
+    pub load_avg_5m: Option<f64>,
+    pub load_avg_15m: Option<f64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

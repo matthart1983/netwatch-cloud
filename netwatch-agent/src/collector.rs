@@ -1,8 +1,8 @@
 use crate::config::AgentConfig;
 use chrono::Utc;
-use netwatch_core::collectors::{config as net_config, connections, health};
+use netwatch_core::collectors::{config as net_config, connections, health, system};
 use netwatch_core::platform;
-use netwatch_core::types::{HealthMetric, InterfaceMetric, Snapshot};
+use netwatch_core::types::{HealthMetric, InterfaceMetric, Snapshot, SystemMetric};
 use std::collections::HashMap;
 
 pub struct MetricsCollector {
@@ -45,11 +45,27 @@ impl MetricsCollector {
         };
         let connection_count = Some(connections::count_established_connections());
 
+        let system_metric = {
+            let cpu = system::measure_cpu_usage();
+            let mem = system::read_memory();
+            let load = system::read_load_avg();
+            Some(SystemMetric {
+                cpu_usage_pct: cpu,
+                memory_total_bytes: mem.as_ref().map(|m| m.total_bytes),
+                memory_used_bytes: mem.as_ref().map(|m| m.used_bytes),
+                memory_available_bytes: mem.as_ref().map(|m| m.available_bytes),
+                load_avg_1m: load.as_ref().map(|l| l.one),
+                load_avg_5m: load.as_ref().map(|l| l.five),
+                load_avg_15m: load.as_ref().map(|l| l.fifteen),
+            })
+        };
+
         Snapshot {
             timestamp: Utc::now(),
             interfaces,
             health,
             connection_count,
+            system: system_metric,
         }
     }
 

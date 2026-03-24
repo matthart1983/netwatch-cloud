@@ -56,6 +56,9 @@ export interface Host {
   is_online: boolean
   last_seen_at: string
   uptime_secs: number | null
+  cpu_model: string | null
+  cpu_cores: number | null
+  memory_total_bytes: number | null
 }
 
 export async function getHosts(): Promise<Host[]> {
@@ -73,6 +76,12 @@ export interface MetricPoint {
   dns_rtt_ms: number | null
   dns_loss_pct: number | null
   connection_count: number | null
+  cpu_usage_pct: number | null
+  memory_used_bytes: number | null
+  memory_available_bytes: number | null
+  load_avg_1m: number | null
+  load_avg_5m: number | null
+  load_avg_15m: number | null
 }
 
 export interface MetricsResponse {
