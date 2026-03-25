@@ -16,3 +16,43 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - run: cargo check --workspace
       - run: cargo test --workspace
+
+  verify-deploy:
+    name: Verify Production Deploy
+    needs: check
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Wait for Railway deploy
+        run: sleep 120
+
+      - name: Verify API version
+        run: |
+          EXPECTED_HASH=$(git rev-parse --short HEAD)
+          echo "Expected commit: $EXPECTED_HASH"
+
+          for i in $(seq 1 20); do
+            RESPONSE=$(curl -sf https://netwatch-api-production.up.railway.app/version 2>&1) || {
+              echo "Attempt $i: /version not responding, retrying in 30s..."
+              sleep 30
+              continue
+            }
+
+            DEPLOYED_HASH=$(echo "$RESPONSE" | jq -r '.git_hash')
+            DEPLOYED_VERSION=$(echo "$RESPONSE" | jq -r '.version')
+            BUILD_TIME=$(echo "$RESPONSE" | jq -r '.build_time')
+            echo "Deployed: v${DEPLOYED_VERSION} (${DEPLOYED_HASH}) built ${BUILD_TIME}"
+
+            if [ "$DEPLOYED_HASH" = "$EXPECTED_HASH" ]; then
+              echo "✅ Deploy verified — commit $EXPECTED_HASH is live"
+              exit 0
+            fi
+
+            echo "Attempt $i: expected $EXPECTED_HASH but got $DEPLOYED_HASH, retrying in 30s..."
+            sleep 30
+          done
+
+          echo "❌ Deploy verification failed — expected $EXPECTED_HASH, got $DEPLOYED_HASH"
+          exit 1

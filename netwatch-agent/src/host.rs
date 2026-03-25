@@ -5,14 +5,18 @@ use std::fs;
 use std::path::Path;
 use uuid::Uuid;
 
-const HOST_ID_PATH: &str = if cfg!(target_os = "macos") {
-    "/usr/local/var/netwatch-agent/host-id"
-} else {
-    "/var/lib/netwatch-agent/host-id"
-};
+fn host_id_path() -> String {
+    if cfg!(target_os = "macos") {
+        if let Ok(home) = std::env::var("HOME") {
+            return format!("{}/.config/netwatch-agent/host-id", home);
+        }
+    }
+    "/var/lib/netwatch-agent/host-id".to_string()
+}
 
 pub fn get_or_create_host_id() -> Result<Uuid> {
-    let path = Path::new(HOST_ID_PATH);
+    let id_path = host_id_path();
+    let path = Path::new(&id_path);
 
     if let Ok(contents) = fs::read_to_string(path) {
         if let Ok(id) = contents.trim().parse::<Uuid>() {
@@ -28,7 +32,7 @@ pub fn get_or_create_host_id() -> Result<Uuid> {
     // Best-effort write — if it fails (e.g. no write permission), we still return the ID
     // but it won't persist across restarts
     if fs::write(path, id.to_string()).is_err() {
-        tracing::warn!("could not persist host-id to {}, using ephemeral ID", HOST_ID_PATH);
+        tracing::warn!("could not persist host-id to {}, using ephemeral ID", id_path);
     }
 
     Ok(id)

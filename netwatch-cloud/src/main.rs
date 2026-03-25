@@ -63,6 +63,7 @@ async fn main() -> Result<()> {
 
     let app = Router::new()
         .route("/health", get(routes::health::health_check))
+        .route("/version", get(routes::health::version))
         .route("/install.sh", get(routes::install::install_script))
         .route("/api/v1/ingest", post(routes::ingest::ingest))
         .route("/api/v1/auth/register", post(routes::auth::register))

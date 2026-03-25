@@ -9,6 +9,7 @@ mod sender;
 mod update;
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
+const GIT_HASH: &str = env!("GIT_HASH");
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -17,7 +18,7 @@ async fn main() -> Result<()> {
 
     match cmd {
         Some("--version" | "-V" | "version") => {
-            println!("netwatch-agent {}", VERSION);
+            println!("netwatch-agent {} ({})", VERSION, GIT_HASH);
             return Ok(());
         }
         Some("--help" | "-h" | "help") => {
@@ -29,6 +30,9 @@ async fn main() -> Result<()> {
         }
         Some("status") => {
             return print_status();
+        }
+        Some("setup") => {
+            return run_setup();
         }
         Some("config") => {
             return print_config();
@@ -57,7 +61,7 @@ async fn main() -> Result<()> {
     let host_id = host::get_or_create_host_id()?;
     let host_info = host::collect_host_info(host_id);
 
-    info!("netwatch-agent started, version {}, host_id={}", VERSION, host_id);
+    info!("netwatch-agent started, version {} ({}), host_id={}", VERSION, GIT_HASH, host_id);
     info!("endpoint: {}", cfg.endpoint);
     info!("interval: {}s, health interval: {}s", cfg.interval_secs, cfg.health_interval_secs);
 
@@ -88,11 +92,89 @@ async fn main() -> Result<()> {
     }
 }
 
+fn run_setup() -> Result<()> {
+    use std::io::{self, BufRead, Write};
+
+    let config_path = config::AgentConfig::config_path();
+    let exists = std::path::Path::new(&config_path).exists();
+
+    println!("netwatch-agent {} — setup", VERSION);
+    println!();
+
+    if exists {
+        println!("Config already exists at {}", config_path);
+        print!("Overwrite? [y/N] ");
+        io::stdout().flush()?;
+        let mut answer = String::new();
+        io::stdin().lock().read_line(&mut answer)?;
+        if !answer.trim().eq_ignore_ascii_case("y") {
+            println!("Setup cancelled.");
+            return Ok(());
+        }
+    }
+
+    // API key
+    print!("API Key: ");
+    io::stdout().flush()?;
+    let mut api_key = String::new();
+    io::stdin().lock().read_line(&mut api_key)?;
+    let api_key = api_key.trim().to_string();
+    if api_key.is_empty() {
+        anyhow::bail!("API key is required");
+    }
+
+    // Endpoint
+    let default_endpoint = "https://netwatch-api-production.up.railway.app/api/v1/ingest";
+    print!("Endpoint [{}]: ", default_endpoint);
+    io::stdout().flush()?;
+    let mut endpoint = String::new();
+    io::stdin().lock().read_line(&mut endpoint)?;
+    let endpoint = endpoint.trim();
+    let endpoint = if endpoint.is_empty() { default_endpoint } else { endpoint };
+
+    // Write config
+    if let Some(parent) = std::path::Path::new(&config_path).parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+
+    let config_content = format!(
+        r#"# NetWatch Agent configuration
+endpoint = "{}"
+api_key = "{}"
+interval_secs = 15
+health_interval_secs = 30
+"#,
+        endpoint, api_key
+    );
+
+    std::fs::write(&config_path, &config_content)?;
+
+    // Restrict permissions on the config file (contains API key)
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&config_path, std::fs::Permissions::from_mode(0o600))?;
+    }
+
+    println!();
+    println!("✅ Config written to {}", config_path);
+    println!();
+    println!("Start the agent with:");
+    println!("  netwatch-agent");
+    println!();
+    println!("Or install as a service (Linux):");
+    println!("  sudo cp $(which netwatch-agent || echo ./target/release/netwatch-agent) /usr/local/bin/");
+    println!("  sudo systemctl enable --now netwatch-agent");
+
+    Ok(())
+}
+
 fn print_help() {
     println!("netwatch-agent {} — network metrics collector", VERSION);
     println!();
     println!("USAGE:");
     println!("  netwatch-agent             Run the agent daemon");
+    println!("  netwatch-agent setup       Interactive first-run setup (writes config, starts agent)");
     println!("  netwatch-agent update      Download and install the latest version");
     println!("  netwatch-agent status      Show agent status");
     println!("  netwatch-agent config      Show current configuration");
@@ -100,7 +182,7 @@ fn print_help() {
     println!("  netwatch-agent help        Show this help");
     println!();
     println!("CONFIGURATION:");
-    println!("  Config file: /etc/netwatch-agent/config.toml");
+    println!("  Config file: {}", config::AgentConfig::config_path());
     println!("  Env vars:    NETWATCH_API_KEY, NETWATCH_ENDPOINT, NETWATCH_INTERVAL");
 }
 
@@ -127,7 +209,12 @@ fn print_status() -> Result<()> {
     }
 
     // Show host ID
-    if let Ok(id) = std::fs::read_to_string("/var/lib/netwatch-agent/host-id") {
+    let host_id_path = if cfg!(target_os = "macos") {
+        std::env::var("HOME").map(|h| format!("{}/.config/netwatch-agent/host-id", h)).unwrap_or_else(|_| "/var/lib/netwatch-agent/host-id".to_string())
+    } else {
+        "/var/lib/netwatch-agent/host-id".to_string()
+    };
+    if let Ok(id) = std::fs::read_to_string(&host_id_path) {
         println!("Host ID: {}", id.trim());
     }
 

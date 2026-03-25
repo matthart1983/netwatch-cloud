@@ -2,7 +2,14 @@ use anyhow::{Context, Result};
 use serde::Deserialize;
 use std::fs;
 
-const DEFAULT_CONFIG_PATH: &str = "/etc/netwatch-agent/config.toml";
+pub fn default_config_path() -> String {
+    if cfg!(target_os = "macos") {
+        if let Ok(home) = std::env::var("HOME") {
+            return format!("{}/.config/netwatch-agent/config.toml", home);
+        }
+    }
+    "/etc/netwatch-agent/config.toml".to_string()
+}
 
 #[derive(Debug, Deserialize)]
 #[serde(default)]
@@ -31,10 +38,14 @@ impl Default for AgentConfig {
 }
 
 impl AgentConfig {
+    pub fn config_path() -> String {
+        std::env::var("NETWATCH_CONFIG").unwrap_or_else(|_| default_config_path())
+    }
+
     pub fn load() -> Result<Self> {
         // Environment variables take precedence
         let config_path = std::env::var("NETWATCH_CONFIG")
-            .unwrap_or_else(|_| DEFAULT_CONFIG_PATH.to_string());
+            .unwrap_or_else(|_| default_config_path());
 
         let mut cfg: AgentConfig = if let Ok(contents) = fs::read_to_string(&config_path) {
             toml::from_str(&contents)

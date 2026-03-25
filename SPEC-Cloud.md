@@ -15,9 +15,9 @@
 | 1 | `netwatch-core` shared library | ✅ Done | Types, platform collectors, health, system metrics |
 | 2 | `netwatch-agent` Linux daemon | ✅ Done | Collects CPU, memory, load avg, interfaces, health, connections |
 | 3 | Agent self-update (`netwatch-agent update`) | ✅ Done | Downloads from GitHub releases, replaces binary, restarts systemd |
-| 4 | Agent CLI (`status`, `config`, `help`, `version`) | ✅ Done | |
-| 5 | Agent Docker image | ✅ Done | `Dockerfile.agent`, env var overrides for hostname/OS |
-| 6 | `agent.sh` local manager script | ✅ Done | start/stop/update/logs/status for Docker-based agents |
+| 4 | Agent CLI (`setup`, `status`, `config`, `help`, `version`) | ✅ Done | `setup` is the single-command onboarding path |
+| 5 | Agent Docker image | ❌ Removed | Docker isolates network namespace, breaks probes — not supported |
+| 6 | `agent.sh` local manager script | ❌ Removed | Replaced by `netwatch-agent setup` built into the binary |
 | 7 | Install script (`install.sh`) | ✅ Done | `--api-key`, `--endpoint`, `--update`, `--remove` modes |
 | 8 | Install script served from API (`/install.sh`) | ✅ Done | Embedded via `include_str!` |
 | 9 | `netwatch-cloud` API server (Axum) | ✅ Done | All endpoints operational |
@@ -142,7 +142,11 @@ The agent does **not** use: `TrafficCollector` (has TUI-specific sparkline histo
 
 ### 2.3 Configuration
 
-Single TOML file at `/etc/netwatch-agent/config.toml`:
+Single TOML config file. Location by platform:
+- **Linux:** `/etc/netwatch-agent/config.toml`
+- **macOS:** `~/.config/netwatch-agent/config.toml`
+
+Created automatically by `netwatch-agent setup`:
 
 ```toml
 # NetWatch Agent configuration
@@ -180,6 +184,7 @@ Environment variables override config file values:
 
 ```
 netwatch-agent              Run the agent daemon
+netwatch-agent setup        Interactive first-run setup (writes config, starts the agent)
 netwatch-agent update       Download and install the latest version (requires sudo)
 netwatch-agent status       Show version, service state, host ID
 netwatch-agent config       Show current configuration
@@ -187,7 +192,11 @@ netwatch-agent version      Print version
 netwatch-agent help         Show usage
 ```
 
-The `update` subcommand downloads the latest binary from GitHub releases, replaces itself, and restarts the systemd service. Docker detection appends "(Docker)" to the OS string automatically.
+The `setup` subcommand is the primary onboarding path. It prompts for the API key and endpoint, writes the config file, and starts the agent — all in a single command. If a config already exists it offers to reconfigure. On macOS it writes to `~/.config/netwatch-agent/config.toml`; on Linux to `/etc/netwatch-agent/config.toml` (may need sudo). The default endpoint is the production cloud URL so users only need to paste their API key.
+
+**Docker is not a supported agent deployment method.** Running the agent inside Docker isolates the network namespace, which breaks gateway/DNS health probes and produces inaccurate interface metrics. The agent must run directly on the host OS.
+
+The `update` subcommand downloads the latest binary from GitHub releases, replaces itself, and restarts the systemd service.
 
 ### 2.5 Lifecycle
 
@@ -1275,7 +1284,7 @@ A strict build sequence, designed to produce a working system as early as possib
 19. ✅ Install script (`curl | sh` with `--update` and `--remove`)
 20. ✅ Agent self-update (`netwatch-agent update`)
 21. ✅ Agent CLI (status, config, version, help)
-22. ✅ Docker image + `agent.sh` manager script
+22. ✅ `netwatch-agent setup` interactive onboarding (replaces Docker image + agent.sh)
 23. ✅ Install script served from API (`/install.sh`)
 24. ✅ CI/CD (GitHub Actions: check/test + cross-compiled releases)
 25. ✅ Deploy to Railway (API + Web + Postgres)
