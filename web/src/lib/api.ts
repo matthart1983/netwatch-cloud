@@ -88,6 +88,8 @@ export interface MetricPoint {
   disk_write_bytes: number | null
   tcp_time_wait: number | null
   tcp_close_wait: number | null
+  net_rx_bytes: number | null
+  net_tx_bytes: number | null
 }
 
 export interface MetricsResponse {

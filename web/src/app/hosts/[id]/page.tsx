@@ -82,6 +82,8 @@ export default function HostDetailPage() {
       disk_write: p.disk_write_bytes != null ? p.disk_write_bytes / (1024 * 1024) : undefined,
       time_wait: p.tcp_time_wait ?? undefined,
       close_wait: p.tcp_close_wait ?? undefined,
+      net_rx: p.net_rx_bytes != null ? p.net_rx_bytes / 1024 : undefined,
+      net_tx: p.net_tx_bytes != null ? p.net_tx_bytes / 1024 : undefined,
     })
   }
 
@@ -229,6 +231,19 @@ export default function HostDetailPage() {
                 <Tooltip contentStyle={{ background: '#1a1a1a', border: '1px solid #333', fontSize: 12 }} />
                 <Line dataKey="time_wait" stroke="#fbbf24" dot={false} connectNulls strokeWidth={1.5} name="TIME_WAIT" />
                 <Line dataKey="close_wait" stroke="#f87171" dot={false} connectNulls strokeWidth={1.5} name="CLOSE_WAIT" />
+              </LineChart>
+            </ResponsiveContainer>
+          </ChartCard>
+
+          <ChartCard title="Network Utilisation (KB)">
+            <ResponsiveContainer width="100%" height={150}>
+              <LineChart data={chartData}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#333" />
+                <XAxis dataKey="time" stroke="#666" tick={{ fontSize: 11 }} interval="preserveStartEnd" />
+                <YAxis stroke="#666" tick={{ fontSize: 11 }} />
+                <Tooltip contentStyle={{ background: '#1a1a1a', border: '1px solid #333', fontSize: 12 }} />
+                <Line dataKey="net_rx" stroke="#34d399" dot={false} connectNulls strokeWidth={1.5} name="RX (KB)" />
+                <Line dataKey="net_tx" stroke="#60a5fa" dot={false} connectNulls strokeWidth={1.5} name="TX (KB)" />
               </LineChart>
             </ResponsiveContainer>
           </ChartCard>

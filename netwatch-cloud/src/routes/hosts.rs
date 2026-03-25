@@ -82,7 +82,7 @@ pub struct MetricsResponse {
     pub points: Vec<MetricPoint>,
 }
 
-#[derive(Serialize, sqlx::FromRow)]
+#[derive(Serialize)]
 pub struct MetricPoint {
     pub time: DateTime<Utc>,
     pub gateway_rtt_ms: Option<f64>,
@@ -102,6 +102,8 @@ pub struct MetricPoint {
     pub disk_write_bytes: Option<i64>,
     pub tcp_time_wait: Option<i32>,
     pub tcp_close_wait: Option<i32>,
+    pub net_rx_bytes: Option<i64>,
+    pub net_tx_bytes: Option<i64>,
 }
 
 pub async fn get_metrics(
@@ -166,7 +168,50 @@ pub async fn get_metrics(
                 disk_write_bytes: row.get("disk_write_bytes"),
                 tcp_time_wait: row.get("tcp_time_wait"),
                 tcp_close_wait: row.get("tcp_close_wait"),
+                net_rx_bytes: None,
+                net_tx_bytes: None,
             }
+        })
+        .collect();
+
+    // Fetch aggregated network utilisation per snapshot time
+    let net_rows = sqlx::query(
+        r#"
+        SELECT time, SUM(rx_bytes_delta)::bigint as rx, SUM(tx_bytes_delta)::bigint as tx
+        FROM interface_metrics
+        WHERE host_id = $1 AND time >= $2 AND time <= $3
+        GROUP BY time
+        ORDER BY time ASC
+        "#,
+    )
+    .bind(id)
+    .bind(from)
+    .bind(to)
+    .fetch_all(&state.db)
+    .await
+    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    // Build a lookup map from time -> (rx, tx)
+    let net_map: std::collections::HashMap<String, (i64, i64)> = net_rows
+        .iter()
+        .map(|row| {
+            use sqlx::Row;
+            let time: DateTime<Utc> = row.get("time");
+            let rx: Option<i64> = row.get("rx");
+            let tx: Option<i64> = row.get("tx");
+            (time.to_rfc3339(), (rx.unwrap_or(0), tx.unwrap_or(0)))
+        })
+        .collect();
+
+    // Merge network data into points
+    let points: Vec<MetricPoint> = points
+        .into_iter()
+        .map(|mut p| {
+            if let Some(&(rx, tx)) = net_map.get(&p.time.to_rfc3339()) {
+                p.net_rx_bytes = Some(rx);
+                p.net_tx_bytes = Some(tx);
+            }
+            p
         })
         .collect();
 
