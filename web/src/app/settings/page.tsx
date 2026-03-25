@@ -62,12 +62,24 @@ export default function SettingsPage() {
           <div className="bg-zinc-900 border border-emerald-700 rounded-lg p-4 mb-4">
             <p className="text-sm text-emerald-400 mb-2">New API key created (shown once):</p>
             <div className="font-mono text-sm break-all mb-2">{newKey}</div>
+
+            <p className="text-sm text-zinc-400 mt-3 mb-2">Install command (ready to paste on your Linux server):</p>
+            <div className="bg-zinc-950 border border-zinc-800 rounded p-3 font-mono text-xs break-all mb-3 select-all">
+              curl -sSL https://netwatch-api-production.up.railway.app/install.sh | sudo sh -s -- --api-key {newKey} --endpoint https://netwatch-api-production.up.railway.app/api/v1/ingest
+            </div>
+
             <div className="flex gap-2">
+              <button
+                onClick={() => navigator.clipboard.writeText(`curl -sSL https://netwatch-api-production.up.railway.app/install.sh | sudo sh -s -- --api-key ${newKey} --endpoint https://netwatch-api-production.up.railway.app/api/v1/ingest`)}
+                className="bg-emerald-600 hover:bg-emerald-500 text-white px-3 py-1 rounded text-xs"
+              >
+                Copy Install Command
+              </button>
               <button
                 onClick={() => navigator.clipboard.writeText(newKey)}
                 className="bg-zinc-700 hover:bg-zinc-600 text-white px-3 py-1 rounded text-xs"
               >
-                Copy
+                Copy Key Only
               </button>
               <button
                 onClick={() => setNewKey(null)}
@@ -110,9 +122,11 @@ export default function SettingsPage() {
 
       <section className="mb-8">
         <h2 className="text-lg font-semibold mb-4">Install Agent</h2>
-        <p className="text-zinc-400 text-sm mb-2">Run this on your Linux server (replace YOUR_API_KEY with a key from above):</p>
-        <div className="bg-zinc-900 border border-zinc-800 rounded p-3 font-mono text-xs break-all">
-          curl -sSL https://netwatch-api-production.up.railway.app/install.sh | sudo sh -s -- --api-key YOUR_API_KEY --endpoint https://netwatch-api-production.up.railway.app/api/v1/ingest
+        <p className="text-zinc-400 text-sm mb-2">
+          Create a new API key above — the full install command will appear automatically with your key pre-filled.
+        </p>
+        <div className="bg-zinc-900 border border-zinc-800 rounded p-3 font-mono text-xs break-all text-zinc-500">
+          curl -sSL https://netwatch-api-production.up.railway.app/install.sh | sudo sh -s -- --api-key <span className="text-yellow-400">YOUR_API_KEY</span> --endpoint https://netwatch-api-production.up.railway.app/api/v1/ingest
         </div>
       </section>
 
