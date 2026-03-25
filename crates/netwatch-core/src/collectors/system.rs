@@ -29,11 +29,37 @@ mod linux {
 
     pub fn detect_cpu_info() -> CpuInfo {
         let contents = fs::read_to_string("/proc/cpuinfo").unwrap_or_default();
+        // x86: "model name : Intel Core i7-..."
         let model = contents
             .lines()
             .find(|l| l.starts_with("model name"))
             .and_then(|l| l.split(':').nth(1))
-            .map(|s| s.trim().to_string());
+            .map(|s| s.trim().to_string())
+            .or_else(|| {
+                // ARM: try lscpu for model name and vendor
+                let output = std::process::Command::new("lscpu")
+                    .output()
+                    .ok()
+                    .map(|o| String::from_utf8_lossy(&o.stdout).to_string());
+                let output = output.as_deref().unwrap_or("");
+                let get = |prefix: &str| {
+                    output.lines()
+                        .find(|l| l.starts_with(prefix))
+                        .and_then(|l| l.split(':').nth(1))
+                        .map(|s| s.trim().to_string())
+                        .filter(|s| !s.is_empty() && s != "-")
+                };
+                let arch = get("Architecture:");
+                let vendor = get("Vendor ID:");
+                let model = get("Model name:");
+                match (model, vendor, arch) {
+                    (Some(m), _, _) => Some(m),
+                    (None, Some(v), Some(a)) => Some(format!("{} ({})", v, a)),
+                    (None, Some(v), None) => Some(v),
+                    (None, None, Some(a)) => Some(a),
+                    _ => None,
+                }
+            });
         let cores = contents
             .lines()
             .filter(|l| l.starts_with("processor"))
