@@ -57,23 +57,24 @@ export default function HostDetailPage() {
     return <div className="text-zinc-400 mt-10">Loading...</div>
   }
 
-  const chartData = points.map(p => ({
+  const chartData = points.map((p, i) => ({
     time: new Date(p.time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-    gateway_rtt: p.gateway_rtt_ms,
-    dns_rtt: p.dns_rtt_ms,
-    loss: p.gateway_loss_pct,
-    connections: p.connection_count,
-    cpu: p.cpu_usage_pct,
-    mem_used: p.memory_used_bytes ? p.memory_used_bytes / (1024 * 1024 * 1024) : null,
-    mem_avail: p.memory_available_bytes ? p.memory_available_bytes / (1024 * 1024 * 1024) : null,
-    load_1m: p.load_avg_1m,
-    load_5m: p.load_avg_5m,
-    load_15m: p.load_avg_15m,
-    swap_used: p.swap_used_bytes ? p.swap_used_bytes / (1024 * 1024) : null,
-    disk_read: p.disk_read_bytes ? p.disk_read_bytes / (1024 * 1024) : null,
-    disk_write: p.disk_write_bytes ? p.disk_write_bytes / (1024 * 1024) : null,
-    time_wait: p.tcp_time_wait,
-    close_wait: p.tcp_close_wait,
+    idx: i,
+    gateway_rtt: p.gateway_rtt_ms ?? null,
+    dns_rtt: p.dns_rtt_ms ?? null,
+    loss: p.gateway_loss_pct ?? null,
+    connections: p.connection_count ?? null,
+    cpu: p.cpu_usage_pct ?? null,
+    mem_used: p.memory_used_bytes != null ? p.memory_used_bytes / (1024 * 1024 * 1024) : null,
+    mem_avail: p.memory_available_bytes != null ? p.memory_available_bytes / (1024 * 1024 * 1024) : null,
+    load_1m: p.load_avg_1m ?? null,
+    load_5m: p.load_avg_5m ?? null,
+    load_15m: p.load_avg_15m ?? null,
+    swap_used: p.swap_used_bytes != null ? p.swap_used_bytes / (1024 * 1024) : null,
+    disk_read: p.disk_read_bytes != null ? p.disk_read_bytes / (1024 * 1024) : null,
+    disk_write: p.disk_write_bytes != null ? p.disk_write_bytes / (1024 * 1024) : null,
+    time_wait: p.tcp_time_wait ?? null,
+    close_wait: p.tcp_close_wait ?? null,
   }))
 
   return (
@@ -114,7 +115,7 @@ export default function HostDetailPage() {
             <ResponsiveContainer width="100%" height={200}>
               <LineChart data={chartData}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#333" />
-                <XAxis dataKey="time" stroke="#666" tick={{ fontSize: 11 }} />
+                <XAxis dataKey="time" stroke="#666" tick={{ fontSize: 11 }} interval="preserveStartEnd" />
                 <YAxis stroke="#666" tick={{ fontSize: 11 }} />
                 <Tooltip contentStyle={{ background: '#1a1a1a', border: '1px solid #333', fontSize: 12 }} />
                 <Line type="monotone" dataKey="gateway_rtt" stroke="#34d399" dot={false} strokeWidth={1.5} name="Gateway RTT" connectNulls />
@@ -127,7 +128,7 @@ export default function HostDetailPage() {
             <ResponsiveContainer width="100%" height={150}>
               <LineChart data={chartData}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#333" />
-                <XAxis dataKey="time" stroke="#666" tick={{ fontSize: 11 }} />
+                <XAxis dataKey="time" stroke="#666" tick={{ fontSize: 11 }} interval="preserveStartEnd" />
                 <YAxis stroke="#666" tick={{ fontSize: 11 }} domain={[0, 'auto']} />
                 <Tooltip contentStyle={{ background: '#1a1a1a', border: '1px solid #333', fontSize: 12 }} />
                 <Line type="monotone" dataKey="loss" stroke="#f87171" dot={false} strokeWidth={1.5} name="Loss %" connectNulls />
@@ -139,7 +140,7 @@ export default function HostDetailPage() {
             <ResponsiveContainer width="100%" height={150}>
               <LineChart data={chartData}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#333" />
-                <XAxis dataKey="time" stroke="#666" tick={{ fontSize: 11 }} />
+                <XAxis dataKey="time" stroke="#666" tick={{ fontSize: 11 }} interval="preserveStartEnd" />
                 <YAxis stroke="#666" tick={{ fontSize: 11 }} />
                 <Tooltip contentStyle={{ background: '#1a1a1a', border: '1px solid #333', fontSize: 12 }} />
                 <Line type="monotone" dataKey="connections" stroke="#a78bfa" dot={false} strokeWidth={1.5} name="Connections" connectNulls />
@@ -151,7 +152,7 @@ export default function HostDetailPage() {
             <ResponsiveContainer width="100%" height={150}>
               <LineChart data={chartData}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#333" />
-                <XAxis dataKey="time" stroke="#666" tick={{ fontSize: 11 }} />
+                <XAxis dataKey="time" stroke="#666" tick={{ fontSize: 11 }} interval="preserveStartEnd" />
                 <YAxis stroke="#666" tick={{ fontSize: 11 }} domain={[0, 100]} />
                 <Tooltip contentStyle={{ background: '#1a1a1a', border: '1px solid #333', fontSize: 12 }} />
                 <Line type="monotone" dataKey="cpu" stroke="#fbbf24" dot={false} strokeWidth={1.5} name="CPU %" connectNulls />
@@ -163,7 +164,7 @@ export default function HostDetailPage() {
             <ResponsiveContainer width="100%" height={150}>
               <LineChart data={chartData}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#333" />
-                <XAxis dataKey="time" stroke="#666" tick={{ fontSize: 11 }} />
+                <XAxis dataKey="time" stroke="#666" tick={{ fontSize: 11 }} interval="preserveStartEnd" />
                 <YAxis stroke="#666" tick={{ fontSize: 11 }} />
                 <Tooltip contentStyle={{ background: '#1a1a1a', border: '1px solid #333', fontSize: 12 }} />
                 <Line type="monotone" dataKey="mem_used" stroke="#f472b6" dot={false} strokeWidth={1.5} name="Used (GB)" connectNulls />
@@ -176,7 +177,7 @@ export default function HostDetailPage() {
             <ResponsiveContainer width="100%" height={150}>
               <LineChart data={chartData}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#333" />
-                <XAxis dataKey="time" stroke="#666" tick={{ fontSize: 11 }} />
+                <XAxis dataKey="time" stroke="#666" tick={{ fontSize: 11 }} interval="preserveStartEnd" />
                 <YAxis stroke="#666" tick={{ fontSize: 11 }} />
                 <Tooltip contentStyle={{ background: '#1a1a1a', border: '1px solid #333', fontSize: 12 }} />
                 <Line type="monotone" dataKey="load_1m" stroke="#34d399" dot={false} strokeWidth={1.5} name="1m" connectNulls />
@@ -190,7 +191,7 @@ export default function HostDetailPage() {
             <ResponsiveContainer width="100%" height={150}>
               <LineChart data={chartData}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#333" />
-                <XAxis dataKey="time" stroke="#666" tick={{ fontSize: 11 }} />
+                <XAxis dataKey="time" stroke="#666" tick={{ fontSize: 11 }} interval="preserveStartEnd" />
                 <YAxis stroke="#666" tick={{ fontSize: 11 }} />
                 <Tooltip contentStyle={{ background: '#1a1a1a', border: '1px solid #333', fontSize: 12 }} />
                 <Line type="monotone" dataKey="swap_used" stroke="#f97316" dot={false} strokeWidth={1.5} name="Swap Used (MB)" connectNulls />
@@ -202,7 +203,7 @@ export default function HostDetailPage() {
             <ResponsiveContainer width="100%" height={150}>
               <LineChart data={chartData}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#333" />
-                <XAxis dataKey="time" stroke="#666" tick={{ fontSize: 11 }} />
+                <XAxis dataKey="time" stroke="#666" tick={{ fontSize: 11 }} interval="preserveStartEnd" />
                 <YAxis stroke="#666" tick={{ fontSize: 11 }} />
                 <Tooltip contentStyle={{ background: '#1a1a1a', border: '1px solid #333', fontSize: 12 }} />
                 <Line type="monotone" dataKey="disk_read" stroke="#38bdf8" dot={false} strokeWidth={1.5} name="Read (MB)" connectNulls />
@@ -215,7 +216,7 @@ export default function HostDetailPage() {
             <ResponsiveContainer width="100%" height={150}>
               <LineChart data={chartData}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#333" />
-                <XAxis dataKey="time" stroke="#666" tick={{ fontSize: 11 }} />
+                <XAxis dataKey="time" stroke="#666" tick={{ fontSize: 11 }} interval="preserveStartEnd" />
                 <YAxis stroke="#666" tick={{ fontSize: 11 }} />
                 <Tooltip contentStyle={{ background: '#1a1a1a', border: '1px solid #333', fontSize: 12 }} />
                 <Line type="monotone" dataKey="time_wait" stroke="#fbbf24" dot={false} strokeWidth={1.5} name="TIME_WAIT" connectNulls />
