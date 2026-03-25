@@ -1,7 +1,5 @@
 FROM rust:1-bookworm AS builder
-RUN apt-get update && apt-get install -y --no-install-recommends git && rm -rf /var/lib/apt/lists/*
 WORKDIR /build
-COPY .git/ .git/
 COPY Cargo.toml Cargo.lock ./
 COPY crates/ crates/
 COPY netwatch-cloud/ netwatch-cloud/
