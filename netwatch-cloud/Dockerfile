@@ -3,7 +3,6 @@ WORKDIR /build
 COPY Cargo.toml Cargo.lock ./
 COPY crates/ crates/
 COPY netwatch-cloud/ netwatch-cloud/
-COPY install.sh ./install.sh
 RUN mkdir -p netwatch-agent/src && echo "fn main() {}" > netwatch-agent/src/main.rs
 COPY netwatch-agent/Cargo.toml netwatch-agent/Cargo.toml
 RUN cargo build --release --package netwatch-cloud

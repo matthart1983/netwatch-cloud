@@ -1,7 +1,7 @@
 use axum::response::{IntoResponse, Response};
 use axum::http::{header, StatusCode};
 
-const INSTALL_SCRIPT: &str = include_str!("../../../install.sh");
+const INSTALL_SCRIPT: &str = include_str!("../../install.sh");
 
 pub async fn install_script() -> Response {
     (
