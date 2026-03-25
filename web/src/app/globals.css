@@ -4,3 +4,14 @@
   --font-sans: var(--font-sans), ui-sans-serif, system-ui, sans-serif;
   --font-mono: var(--font-mono), ui-monospace, monospace;
 }
+
+/* react-grid-layout dark theme overrides */
+.react-grid-item.react-grid-placeholder {
+  background: #34d399;
+  opacity: 0.15;
+  border-radius: 0.5rem;
+}
+.react-grid-item > .react-resizable-handle::after {
+  border-right-color: rgba(161, 161, 170, 0.4);
+  border-bottom-color: rgba(161, 161, 170, 0.4);
+}

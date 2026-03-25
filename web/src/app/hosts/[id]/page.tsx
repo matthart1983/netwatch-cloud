@@ -5,7 +5,16 @@ import { useParams, useRouter } from 'next/navigation'
 import { useAuth } from '@/lib/auth'
 import { getHost, getMetrics, Host, MetricPoint } from '@/lib/api'
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts'
-import { ChevronDown, ChevronRight, Activity, Pause, Circle } from 'lucide-react'
+import { Responsive as ResponsiveGridLayout, useContainerWidth } from 'react-grid-layout'
+import type { Layout, ResponsiveLayouts } from 'react-grid-layout'
+import 'react-grid-layout/css/styles.css'
+import 'react-resizable/css/styles.css'
+import {
+  ChevronDown, ChevronRight, ChevronUp, Pause, Circle,
+  GripVertical, Maximize2, Minimize2, Lock, Unlock, RotateCcw,
+} from 'lucide-react'
+
+// ─── Constants ───────────────────────────────────────────────
 
 type TimeRange = '1h' | '6h' | '24h' | '72h'
 
@@ -18,22 +27,131 @@ const RANGES: { label: string; value: TimeRange; hours: number }[] = [
 
 const TOOLTIP_STYLE = { background: '#1a1a1a', border: '1px solid #333', fontSize: 12 }
 
-type SectionKey = 'network' | 'system' | 'storage'
+const PANEL_IDS = ['latency-loss', 'network-conn', 'cpu-memory', 'load-swap', 'disk-util', 'tcp-states'] as const
+type PanelId = typeof PANEL_IDS[number]
 
-function getSectionState(): Record<SectionKey, boolean> {
-  if (typeof window === 'undefined') return { network: true, system: true, storage: true }
-  try {
-    const stored = localStorage.getItem('host-dashboard-sections')
-    if (stored) return JSON.parse(stored)
-  } catch {}
-  return { network: true, system: true, storage: true }
+const BREAKPOINTS = { lg: 1024, md: 768, sm: 480, xs: 0 }
+const COLS = { lg: 12, md: 12, sm: 6, xs: 6 }
+
+function makeDefaultLayout(cols: number): Layout {
+  const w = cols >= 12 ? 6 : cols
+  return PANEL_IDS.map((id, i) => ({
+    i: id,
+    x: cols >= 12 ? (i % 2) * 6 : 0,
+    y: cols >= 12 ? Math.floor(i / 2) * 2 : i * 2,
+    w,
+    h: 2,
+    minW: cols >= 12 ? 4 : cols,
+    minH: 2,
+  }))
 }
 
-function saveSectionState(state: Record<SectionKey, boolean>) {
-  try {
-    localStorage.setItem('host-dashboard-sections', JSON.stringify(state))
-  } catch {}
+const DEFAULT_LAYOUTS: ResponsiveLayouts = {
+  lg: makeDefaultLayout(12),
+  md: makeDefaultLayout(12),
+  sm: makeDefaultLayout(6),
+  xs: makeDefaultLayout(6),
 }
+
+const LS_KEY = 'host-dashboard-layout-v2'
+
+interface PersistedState {
+  layouts: ResponsiveLayouts
+  collapsed: Record<string, boolean>
+  locked: boolean
+}
+
+function loadPersistedState(): PersistedState | null {
+  if (typeof window === 'undefined') return null
+  try {
+    const raw = localStorage.getItem(LS_KEY)
+    if (raw) {
+      const parsed = JSON.parse(raw)
+      if (parsed.layouts) return parsed
+    }
+  } catch {}
+  // migrate from Phase 1
+  try { localStorage.removeItem('host-dashboard-sections') } catch {}
+  return null
+}
+
+function savePersistedState(state: PersistedState) {
+  try { localStorage.setItem(LS_KEY, JSON.stringify(state)) } catch {}
+}
+
+// ─── Panel Config ────────────────────────────────────────────
+
+interface PanelConfig {
+  id: PanelId
+  title: string
+  statKeys: { key: string; label: string }[]
+  yDomain?: [number | string, number | string]
+  lines: { dataKey: string; stroke: string; name: string }[]
+}
+
+const PANEL_CONFIGS: PanelConfig[] = [
+  {
+    id: 'latency-loss',
+    title: 'Latency & Loss',
+    statKeys: [{ key: 'gateway_rtt', label: 'Gateway RTT' }, { key: 'loss', label: 'Loss %' }],
+    lines: [
+      { dataKey: 'gateway_rtt', stroke: '#34d399', name: 'Gateway RTT (ms)' },
+      { dataKey: 'dns_rtt', stroke: '#60a5fa', name: 'DNS RTT (ms)' },
+      { dataKey: 'loss', stroke: '#f87171', name: 'Loss %' },
+    ],
+  },
+  {
+    id: 'network-conn',
+    title: 'Network & Connections',
+    statKeys: [{ key: 'net_rx', label: 'RX (KB)' }, { key: 'net_tx', label: 'TX (KB)' }, { key: 'connections', label: 'Connections' }],
+    lines: [
+      { dataKey: 'net_rx', stroke: '#34d399', name: 'RX (KB)' },
+      { dataKey: 'net_tx', stroke: '#60a5fa', name: 'TX (KB)' },
+      { dataKey: 'connections', stroke: '#a78bfa', name: 'Connections' },
+    ],
+  },
+  {
+    id: 'cpu-memory',
+    title: 'CPU & Memory',
+    statKeys: [{ key: 'cpu', label: 'CPU %' }, { key: 'mem_used', label: 'Mem Used (GB)' }],
+    lines: [
+      { dataKey: 'cpu', stroke: '#fbbf24', name: 'CPU %' },
+      { dataKey: 'mem_used', stroke: '#f472b6', name: 'Used (GB)' },
+      { dataKey: 'mem_avail', stroke: '#38bdf8', name: 'Available (GB)' },
+    ],
+  },
+  {
+    id: 'load-swap',
+    title: 'Load & Swap',
+    statKeys: [{ key: 'load_1m', label: 'Load 1m' }, { key: 'swap_used', label: 'Swap (MB)' }],
+    lines: [
+      { dataKey: 'load_1m', stroke: '#34d399', name: '1m' },
+      { dataKey: 'load_5m', stroke: '#fbbf24', name: '5m' },
+      { dataKey: 'load_15m', stroke: '#f87171', name: '15m' },
+      { dataKey: 'swap_used', stroke: '#f97316', name: 'Swap (MB)' },
+    ],
+  },
+  {
+    id: 'disk-util',
+    title: 'Disk Utilisation',
+    statKeys: [{ key: 'disk_usage', label: 'Disk %' }],
+    yDomain: [0, 100],
+    lines: [
+      { dataKey: 'disk_usage', stroke: '#f97316', name: 'Disk %' },
+    ],
+  },
+  {
+    id: 'tcp-states',
+    title: 'TCP Connection States',
+    statKeys: [{ key: 'time_wait', label: 'TIME_WAIT' }, { key: 'close_wait', label: 'CLOSE_WAIT' }],
+    lines: [
+      { dataKey: 'time_wait', stroke: '#fbbf24', name: 'TIME_WAIT' },
+      { dataKey: 'close_wait', stroke: '#f87171', name: 'CLOSE_WAIT' },
+    ],
+  },
+]
+
+// ─── Utility Functions ───────────────────────────────────────
 
 function formatBytes(bytes: number): string {
   if (bytes >= 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GB`
@@ -59,7 +177,7 @@ function timeAgo(iso: string): number {
   return Math.max(0, Math.floor((Date.now() - new Date(iso).getTime()) / 1000))
 }
 
-function computeStats(data: Record<string, unknown>[], key: string): { current: number | null; avg: number | null; max: number | null; min: number | null } {
+function computeStats(data: Record<string, unknown>[], key: string) {
   const vals = data.map(d => d[key]).filter((v): v is number => typeof v === 'number')
   if (vals.length === 0) return { current: null, avg: null, max: null, min: null }
   return {
@@ -70,13 +188,16 @@ function computeStats(data: Record<string, unknown>[], key: string): { current: 
   }
 }
 
+function formatStatVal(v: number | null): string {
+  if (v == null) return '—'
+  if (Math.abs(v) >= 1000) return v.toFixed(0)
+  if (Math.abs(v) >= 100) return v.toFixed(1)
+  return v.toFixed(2)
+}
+
 type HealthStatus = 'healthy' | 'warning' | 'critical'
 
-interface HealthResult {
-  status: HealthStatus
-  issues: string[]
-  alertCount: number
-}
+interface HealthResult { status: HealthStatus; issues: string[]; alertCount: number }
 
 function evaluateHealth(latest: MetricPoint | null, cpuCores: number | null): HealthResult {
   if (!latest) return { status: 'healthy', issues: [], alertCount: 0 }
@@ -85,34 +206,17 @@ function evaluateHealth(latest: MetricPoint | null, cpuCores: number | null): He
   let hasWarning = false
 
   if (latest.cpu_usage_pct != null) {
-    if (latest.cpu_usage_pct > 95) {
-      hasCritical = true
-      issues.push(`CPU critical at ${latest.cpu_usage_pct.toFixed(1)}%`)
-    } else if (latest.cpu_usage_pct > 80) {
-      hasWarning = true
-      issues.push(`CPU high at ${latest.cpu_usage_pct.toFixed(1)}%`)
-    }
+    if (latest.cpu_usage_pct > 95) { hasCritical = true; issues.push(`CPU critical at ${latest.cpu_usage_pct.toFixed(1)}%`) }
+    else if (latest.cpu_usage_pct > 80) { hasWarning = true; issues.push(`CPU high at ${latest.cpu_usage_pct.toFixed(1)}%`) }
   }
-
   if (latest.memory_used_bytes != null && latest.memory_available_bytes != null) {
     const total = latest.memory_used_bytes + latest.memory_available_bytes
     const pct = total > 0 ? (latest.memory_used_bytes / total) * 100 : 0
-    if (pct > 85) {
-      hasWarning = true
-      issues.push(`Memory at ${pct.toFixed(1)}%`)
-    }
+    if (pct > 85) { hasWarning = true; issues.push(`Memory at ${pct.toFixed(1)}%`) }
   }
-
-  if (latest.disk_usage_pct != null && latest.disk_usage_pct > 90) {
-    hasWarning = true
-    issues.push(`Disk at ${latest.disk_usage_pct.toFixed(1)}%`)
-  }
-
-  if (latest.load_avg_1m != null && cpuCores != null && cpuCores > 0) {
-    if (latest.load_avg_1m > cpuCores) {
-      hasWarning = true
-      issues.push(`Load ${latest.load_avg_1m.toFixed(2)} > ${cpuCores} cores`)
-    }
+  if (latest.disk_usage_pct != null && latest.disk_usage_pct > 90) { hasWarning = true; issues.push(`Disk at ${latest.disk_usage_pct.toFixed(1)}%`) }
+  if (latest.load_avg_1m != null && cpuCores != null && cpuCores > 0 && latest.load_avg_1m > cpuCores) {
+    hasWarning = true; issues.push(`Load ${latest.load_avg_1m.toFixed(2)} > ${cpuCores} cores`)
   }
 
   const status: HealthStatus = hasCritical ? 'critical' : hasWarning ? 'warning' : 'healthy'
@@ -134,6 +238,8 @@ function getStatColor(value: number | null, warnThreshold: number, critThreshold
   return 'text-emerald-400'
 }
 
+// ─── Main Page Component ─────────────────────────────────────
+
 export default function HostDetailPage() {
   const { id } = useParams<{ id: string }>()
   const { token, isLoading: authLoading } = useAuth()
@@ -145,10 +251,52 @@ export default function HostDetailPage() {
   const [paused, setPaused] = useState(false)
   const [lastFetch, setLastFetch] = useState<Date | null>(null)
   const [secondsAgo, setSecondsAgo] = useState(0)
-  const [sections, setSections] = useState<Record<SectionKey, boolean>>(getSectionState)
   const [hostInfoOpen, setHostInfoOpen] = useState(false)
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
+  // Grid layout state
+  const persisted = useRef(loadPersistedState())
+  const [layouts, setLayouts] = useState<ResponsiveLayouts>(persisted.current?.layouts ?? DEFAULT_LAYOUTS)
+  const [collapsed, setCollapsed] = useState<Record<string, boolean>>(persisted.current?.collapsed ?? {})
+  const [locked, setLocked] = useState(persisted.current?.locked ?? false)
+  const [maximizedPanel, setMaximizedPanel] = useState<PanelId | null>(null)
+  const { width: containerWidth, containerRef, mounted: containerMounted } = useContainerWidth()
+
+  // Persist layout changes
+  const persistState = useCallback((l: ResponsiveLayouts, c: Record<string, boolean>, lk: boolean) => {
+    savePersistedState({ layouts: l, collapsed: c, locked: lk })
+  }, [])
+
+  const handleLayoutChange = useCallback((_layout: Layout, allLayouts: ResponsiveLayouts) => {
+    setLayouts(allLayouts)
+    persistState(allLayouts, collapsed, locked)
+  }, [collapsed, locked, persistState])
+
+  const toggleCollapse = useCallback((panelId: string) => {
+    setCollapsed(prev => {
+      const next = { ...prev, [panelId]: !prev[panelId] }
+      persistState(layouts, next, locked)
+      return next
+    })
+  }, [layouts, locked, persistState])
+
+  const toggleLock = useCallback(() => {
+    setLocked(prev => {
+      const next = !prev
+      persistState(layouts, collapsed, next)
+      return next
+    })
+  }, [layouts, collapsed, persistState])
+
+  const resetLayout = useCallback(() => {
+    if (!confirm('Reset dashboard layout to defaults?')) return
+    setLayouts(DEFAULT_LAYOUTS)
+    setCollapsed({})
+    setLocked(false)
+    try { localStorage.removeItem(LS_KEY) } catch {}
+  }, [])
+
+  // Data fetching
   const fetchData = useCallback(async () => {
     if (!token || !id) return
     try {
@@ -180,27 +328,22 @@ export default function HostDetailPage() {
     return () => { if (intervalRef.current) clearInterval(intervalRef.current) }
   }, [paused, authLoading, token, fetchData])
 
-  // Live countdown for "last seen" and "data freshness"
   useEffect(() => {
-    const tick = setInterval(() => {
-      setSecondsAgo(prev => prev + 1)
-    }, 1000)
+    const tick = setInterval(() => setSecondsAgo(prev => prev + 1), 1000)
     return () => clearInterval(tick)
   }, [])
 
+  useEffect(() => { setSecondsAgo(0) }, [lastFetch])
+
+  // Escape key to close maximized panel
   useEffect(() => {
-    setSecondsAgo(0)
-  }, [lastFetch])
+    if (!maximizedPanel) return
+    const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') setMaximizedPanel(null) }
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
+  }, [maximizedPanel])
 
-  const toggleSection = (key: SectionKey) => {
-    setSections(prev => {
-      const next = { ...prev, [key]: !prev[key] }
-      saveSectionState(next)
-      return next
-    })
-  }
-
-  // Deduplicate by time label — keep last point per minute for cleaner charts
+  // Chart data (deduplicated)
   const chartData = useMemo(() => {
     const result: Record<string, unknown>[] = []
     const seen = new Set<string>()
@@ -290,11 +433,8 @@ export default function HostDetailPage() {
               </span>
             )}
             {lastSeenSecs != null && (
-              <span className="text-xs text-zinc-500">
-                Last seen {lastSeenSecs}s ago
-              </span>
+              <span className="text-xs text-zinc-500">Last seen {lastSeenSecs}s ago</span>
             )}
-            {/* Live/Pause indicator */}
             <button
               onClick={() => setPaused(p => !p)}
               className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium border transition-colors ${
@@ -303,17 +443,9 @@ export default function HostDetailPage() {
                   : 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30 hover:bg-emerald-500/25'
               }`}
             >
-              {paused ? (
-                <><Pause size={12} /> Paused</>
-              ) : (
-                <><Circle size={8} fill="currentColor" className="animate-pulse" /> Live</>
-              )}
+              {paused ? <><Pause size={12} /> Paused</> : <><Circle size={8} fill="currentColor" className="animate-pulse" /> Live</>}
             </button>
-            {lastFetch && (
-              <span className="text-xs text-zinc-600">
-                {secondsAgo}s ago
-              </span>
-            )}
+            {lastFetch && <span className="text-xs text-zinc-600">{secondsAgo}s ago</span>}
           </div>
         </div>
       </div>
@@ -348,200 +480,98 @@ export default function HostDetailPage() {
 
       {/* === Live Stats Bar === */}
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 mb-4">
-        <LiveStatCard
-          label="CPU"
-          value={cpuStats.current != null ? `${cpuStats.current.toFixed(1)}%` : '—'}
-          delta={getDeltaInfo(cpuStats.current, cpuStats.avg)}
-          valueColor={getStatColor(cpuStats.current, 80, 95)}
-        />
-        <LiveStatCard
-          label="Memory"
-          value={memPct != null ? `${memPct.toFixed(1)}%` : '—'}
-          delta={getDeltaInfo(memPct, memAvgPct)}
-          valueColor={getStatColor(memPct, 85)}
-        />
-        <LiveStatCard
-          label="Load 1m"
-          value={loadStats.current != null ? loadStats.current.toFixed(2) : '—'}
-          delta={getDeltaInfo(loadStats.current, loadStats.avg)}
-          valueColor={getStatColor(loadStats.current, host.cpu_cores ?? 999)}
-        />
-        <LiveStatCard
-          label="Disk"
-          value={diskStats.current != null ? `${diskStats.current.toFixed(1)}%` : '—'}
-          delta={getDeltaInfo(diskStats.current, diskStats.avg)}
-          valueColor={getStatColor(diskStats.current, 90)}
-        />
-        <LiveStatCard
-          label="Net RX/TX"
-          value={rxStats.current != null && txStats.current != null
-            ? `${formatRate(rxStats.current)} / ${formatRate(txStats.current)}`
-            : '—'}
-          delta={getDeltaInfo(
-            rxStats.current != null && txStats.current != null ? rxStats.current + txStats.current : null,
-            rxStats.avg != null && txStats.avg != null ? rxStats.avg + txStats.avg : null
-          )}
-          valueColor="text-zinc-100"
-        />
-        <LiveStatCard
-          label="Connections"
-          value={connStats.current != null ? connStats.current.toFixed(0) : '—'}
-          delta={getDeltaInfo(connStats.current, connStats.avg)}
-          valueColor="text-zinc-100"
-        />
+        <LiveStatCard label="CPU" value={cpuStats.current != null ? `${cpuStats.current.toFixed(1)}%` : '—'} delta={getDeltaInfo(cpuStats.current, cpuStats.avg)} valueColor={getStatColor(cpuStats.current, 80, 95)} />
+        <LiveStatCard label="Memory" value={memPct != null ? `${memPct.toFixed(1)}%` : '—'} delta={getDeltaInfo(memPct, memAvgPct)} valueColor={getStatColor(memPct, 85)} />
+        <LiveStatCard label="Load 1m" value={loadStats.current != null ? loadStats.current.toFixed(2) : '—'} delta={getDeltaInfo(loadStats.current, loadStats.avg)} valueColor={getStatColor(loadStats.current, host.cpu_cores ?? 999)} />
+        <LiveStatCard label="Disk" value={diskStats.current != null ? `${diskStats.current.toFixed(1)}%` : '—'} delta={getDeltaInfo(diskStats.current, diskStats.avg)} valueColor={getStatColor(diskStats.current, 90)} />
+        <LiveStatCard label="Net RX/TX" value={rxStats.current != null && txStats.current != null ? `${formatRate(rxStats.current)} / ${formatRate(txStats.current)}` : '—'} delta={getDeltaInfo(rxStats.current != null && txStats.current != null ? rxStats.current + txStats.current : null, rxStats.avg != null && txStats.avg != null ? rxStats.avg + txStats.avg : null)} valueColor="text-zinc-100" />
+        <LiveStatCard label="Connections" value={connStats.current != null ? connStats.current.toFixed(0) : '—'} delta={getDeltaInfo(connStats.current, connStats.avg)} valueColor="text-zinc-100" />
       </div>
 
-      {/* === Time Range Selector === */}
-      <div className="flex gap-2 mb-4">
-        {RANGES.map(r => (
+      {/* === Time Range + Dashboard Toolbar === */}
+      <div className="flex items-center justify-between mb-4">
+        <div className="flex gap-2">
+          {RANGES.map(r => (
+            <button
+              key={r.value}
+              onClick={() => { setRange(r.value); setLoading(true) }}
+              className={`px-3 py-1 rounded text-sm ${range === r.value ? 'bg-emerald-600 text-white' : 'bg-zinc-800 text-zinc-400 hover:text-zinc-100'}`}
+            >
+              {r.label}
+            </button>
+          ))}
+        </div>
+        <div className="flex items-center gap-2">
           <button
-            key={r.value}
-            onClick={() => { setRange(r.value); setLoading(true) }}
-            className={`px-3 py-1 rounded text-sm ${range === r.value ? 'bg-emerald-600 text-white' : 'bg-zinc-800 text-zinc-400 hover:text-zinc-100'}`}
+            onClick={toggleLock}
+            className={`flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-medium transition-colors ${
+              locked ? 'bg-yellow-500/15 text-yellow-400 border border-yellow-500/30' : 'bg-zinc-800 text-zinc-400 hover:text-zinc-100 border border-zinc-700'
+            }`}
+            title={locked ? 'Unlock layout' : 'Lock layout'}
           >
-            {r.label}
+            {locked ? <Lock size={12} /> : <Unlock size={12} />}
+            {locked ? 'Locked' : 'Unlocked'}
           </button>
-        ))}
+          <button
+            onClick={resetLayout}
+            className="flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-medium bg-zinc-800 text-zinc-400 hover:text-zinc-100 border border-zinc-700 transition-colors"
+            title="Reset layout"
+          >
+            <RotateCcw size={12} />
+            Reset
+          </button>
+        </div>
       </div>
 
+      {/* === Chart Grid === */}
       {chartData.length === 0 ? (
         <p className="text-zinc-400">No data for this time range.</p>
       ) : (
-        <div className="space-y-6">
-          {/* === Network Health Section === */}
-          <CollapsibleSection
-            title="Network Health"
-            sectionKey="network"
-            open={sections.network}
-            onToggle={() => toggleSection('network')}
-          >
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-              <DashboardChart title="Latency & Loss" data={chartData} stats={[
-                { key: 'gateway_rtt', label: 'Gateway RTT' },
-                { key: 'loss', label: 'Loss %' },
-              ]}>
-                <ResponsiveContainer width="100%" height={200}>
-                  <LineChart data={chartData} syncId="host-dashboard">
-                    <CartesianGrid strokeDasharray="3 3" stroke="#333" />
-                    <XAxis dataKey="time" stroke="#666" tick={{ fontSize: 11 }} interval="preserveStartEnd" />
-                    <YAxis stroke="#666" tick={{ fontSize: 11 }} />
-                    <Tooltip contentStyle={TOOLTIP_STYLE} />
-                    <Line dataKey="gateway_rtt" stroke="#34d399" dot={false} connectNulls strokeWidth={1.5} name="Gateway RTT (ms)" />
-                    <Line dataKey="dns_rtt" stroke="#60a5fa" dot={false} connectNulls strokeWidth={1.5} name="DNS RTT (ms)" />
-                    <Line dataKey="loss" stroke="#f87171" dot={false} connectNulls strokeWidth={1.5} name="Loss %" />
-                  </LineChart>
-                </ResponsiveContainer>
-              </DashboardChart>
-
-              <DashboardChart title="Network & Connections" data={chartData} stats={[
-                { key: 'net_rx', label: 'RX (KB)' },
-                { key: 'net_tx', label: 'TX (KB)' },
-                { key: 'connections', label: 'Connections' },
-              ]}>
-                <ResponsiveContainer width="100%" height={200}>
-                  <LineChart data={chartData} syncId="host-dashboard">
-                    <CartesianGrid strokeDasharray="3 3" stroke="#333" />
-                    <XAxis dataKey="time" stroke="#666" tick={{ fontSize: 11 }} interval="preserveStartEnd" />
-                    <YAxis stroke="#666" tick={{ fontSize: 11 }} />
-                    <Tooltip contentStyle={TOOLTIP_STYLE} />
-                    <Line dataKey="net_rx" stroke="#34d399" dot={false} connectNulls strokeWidth={1.5} name="RX (KB)" />
-                    <Line dataKey="net_tx" stroke="#60a5fa" dot={false} connectNulls strokeWidth={1.5} name="TX (KB)" />
-                    <Line dataKey="connections" stroke="#a78bfa" dot={false} connectNulls strokeWidth={1.5} name="Connections" />
-                  </LineChart>
-                </ResponsiveContainer>
-              </DashboardChart>
-            </div>
-          </CollapsibleSection>
-
-          {/* === System Resources Section === */}
-          <CollapsibleSection
-            title="System Resources"
-            sectionKey="system"
-            open={sections.system}
-            onToggle={() => toggleSection('system')}
-          >
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-              <DashboardChart title="CPU & Memory" data={chartData} stats={[
-                { key: 'cpu', label: 'CPU %' },
-                { key: 'mem_used', label: 'Mem Used (GB)' },
-              ]}>
-                <ResponsiveContainer width="100%" height={200}>
-                  <LineChart data={chartData} syncId="host-dashboard">
-                    <CartesianGrid strokeDasharray="3 3" stroke="#333" />
-                    <XAxis dataKey="time" stroke="#666" tick={{ fontSize: 11 }} interval="preserveStartEnd" />
-                    <YAxis stroke="#666" tick={{ fontSize: 11 }} />
-                    <Tooltip contentStyle={TOOLTIP_STYLE} />
-                    <Line dataKey="cpu" stroke="#fbbf24" dot={false} connectNulls strokeWidth={1.5} name="CPU %" />
-                    <Line dataKey="mem_used" stroke="#f472b6" dot={false} connectNulls strokeWidth={1.5} name="Used (GB)" />
-                    <Line dataKey="mem_avail" stroke="#38bdf8" dot={false} connectNulls strokeWidth={1.5} name="Available (GB)" />
-                  </LineChart>
-                </ResponsiveContainer>
-              </DashboardChart>
-
-              <DashboardChart title="Load & Swap" data={chartData} stats={[
-                { key: 'load_1m', label: 'Load 1m' },
-                { key: 'swap_used', label: 'Swap (MB)' },
-              ]}>
-                <ResponsiveContainer width="100%" height={200}>
-                  <LineChart data={chartData} syncId="host-dashboard">
-                    <CartesianGrid strokeDasharray="3 3" stroke="#333" />
-                    <XAxis dataKey="time" stroke="#666" tick={{ fontSize: 11 }} interval="preserveStartEnd" />
-                    <YAxis stroke="#666" tick={{ fontSize: 11 }} />
-                    <Tooltip contentStyle={TOOLTIP_STYLE} />
-                    <Line dataKey="load_1m" stroke="#34d399" dot={false} connectNulls strokeWidth={1.5} name="1m" />
-                    <Line dataKey="load_5m" stroke="#fbbf24" dot={false} connectNulls strokeWidth={1.5} name="5m" />
-                    <Line dataKey="load_15m" stroke="#f87171" dot={false} connectNulls strokeWidth={1.5} name="15m" />
-                    <Line dataKey="swap_used" stroke="#f97316" dot={false} connectNulls strokeWidth={1.5} name="Swap (MB)" />
-                  </LineChart>
-                </ResponsiveContainer>
-              </DashboardChart>
-            </div>
-          </CollapsibleSection>
-
-          {/* === Storage Section === */}
-          <CollapsibleSection
-            title="Storage"
-            sectionKey="storage"
-            open={sections.storage}
-            onToggle={() => toggleSection('storage')}
-          >
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-              <DashboardChart title="Disk Utilisation" data={chartData} stats={[
-                { key: 'disk_usage', label: 'Disk %' },
-              ]}>
-                <ResponsiveContainer width="100%" height={200}>
-                  <LineChart data={chartData} syncId="host-dashboard">
-                    <CartesianGrid strokeDasharray="3 3" stroke="#333" />
-                    <XAxis dataKey="time" stroke="#666" tick={{ fontSize: 11 }} interval="preserveStartEnd" />
-                    <YAxis stroke="#666" tick={{ fontSize: 11 }} domain={[0, 100]} />
-                    <Tooltip contentStyle={TOOLTIP_STYLE} />
-                    <Line dataKey="disk_usage" stroke="#f97316" dot={false} connectNulls strokeWidth={1.5} name="Disk %" />
-                  </LineChart>
-                </ResponsiveContainer>
-              </DashboardChart>
-
-              <DashboardChart title="TCP Connection States" data={chartData} stats={[
-                { key: 'time_wait', label: 'TIME_WAIT' },
-                { key: 'close_wait', label: 'CLOSE_WAIT' },
-              ]}>
-                <ResponsiveContainer width="100%" height={200}>
-                  <LineChart data={chartData} syncId="host-dashboard">
-                    <CartesianGrid strokeDasharray="3 3" stroke="#333" />
-                    <XAxis dataKey="time" stroke="#666" tick={{ fontSize: 11 }} interval="preserveStartEnd" />
-                    <YAxis stroke="#666" tick={{ fontSize: 11 }} />
-                    <Tooltip contentStyle={TOOLTIP_STYLE} />
-                    <Line dataKey="time_wait" stroke="#fbbf24" dot={false} connectNulls strokeWidth={1.5} name="TIME_WAIT" />
-                    <Line dataKey="close_wait" stroke="#f87171" dot={false} connectNulls strokeWidth={1.5} name="CLOSE_WAIT" />
-                  </LineChart>
-                </ResponsiveContainer>
-              </DashboardChart>
-            </div>
-          </CollapsibleSection>
+        <div ref={containerRef}>
+          {containerMounted && (
+            <ResponsiveGridLayout
+              width={containerWidth}
+              layouts={layouts}
+              breakpoints={BREAKPOINTS}
+              cols={COLS}
+              rowHeight={120}
+              margin={[12, 12]}
+              containerPadding={[0, 0]}
+              onLayoutChange={handleLayoutChange}
+              dragConfig={locked ? { enabled: false } : { handle: '.panel-drag-handle' }}
+              resizeConfig={locked ? { enabled: false } : { handles: ['se'] }}
+              compactor={undefined}
+            >
+              {PANEL_CONFIGS.map(config => (
+                <div key={config.id}>
+                  <ChartPanel
+                    config={config}
+                    data={chartData}
+                    isCollapsed={!!collapsed[config.id]}
+                    isLocked={locked}
+                    onToggleCollapse={() => toggleCollapse(config.id)}
+                    onMaximize={() => setMaximizedPanel(config.id)}
+                  />
+                </div>
+              ))}
+            </ResponsiveGridLayout>
+          )}
         </div>
+      )}
+
+      {/* === Maximized Panel Overlay === */}
+      {maximizedPanel && (
+        <MaximizedOverlay
+          config={PANEL_CONFIGS.find(c => c.id === maximizedPanel)!}
+          data={chartData}
+          onClose={() => setMaximizedPanel(null)}
+        />
       )}
     </div>
   )
 }
+
+// ─── Sub-components ──────────────────────────────────────────
 
 function InfoItem({ label, value }: { label: string; value: string }) {
   return (
@@ -553,10 +583,7 @@ function InfoItem({ label, value }: { label: string; value: string }) {
 }
 
 function LiveStatCard({ label, value, delta, valueColor }: {
-  label: string
-  value: string
-  delta: { arrow: string; color: string }
-  valueColor: string
+  label: string; value: string; delta: { arrow: string; color: string }; valueColor: string
 }) {
   return (
     <div className="bg-zinc-900 border border-zinc-800 rounded-lg p-3">
@@ -567,23 +594,97 @@ function LiveStatCard({ label, value, delta, valueColor }: {
   )
 }
 
-function CollapsibleSection({ title, sectionKey, open, onToggle, children }: {
-  title: string
-  sectionKey: string
-  open: boolean
-  onToggle: () => void
-  children: React.ReactNode
+function ChartPanel({ config, data, isCollapsed, isLocked, onToggleCollapse, onMaximize }: {
+  config: PanelConfig
+  data: Record<string, unknown>[]
+  isCollapsed: boolean
+  isLocked: boolean
+  onToggleCollapse: () => void
+  onMaximize: () => void
 }) {
+  const primaryStat = config.statKeys[0] ? computeStats(data, config.statKeys[0].key) : null
+
   return (
-    <div>
-      <button
-        onClick={onToggle}
-        className="flex items-center gap-2 mb-3 text-sm font-medium text-zinc-300 hover:text-zinc-100 transition-colors"
-      >
-        {open ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
-        {title}
-      </button>
-      {open && children}
+    <div className="bg-zinc-900 border border-zinc-800 rounded-lg h-full flex flex-col overflow-hidden">
+      {/* Panel header */}
+      <div className="flex items-center gap-2 px-3 py-2 border-b border-zinc-800/50 shrink-0">
+        {!isLocked && (
+          <div className="panel-drag-handle cursor-grab active:cursor-grabbing text-zinc-600 hover:text-zinc-400 shrink-0">
+            <GripVertical size={14} />
+          </div>
+        )}
+        <h3 className="text-sm font-medium text-zinc-300 truncate">{config.title}</h3>
+        {primaryStat && !isCollapsed && (
+          <div className="hidden sm:flex gap-2 ml-auto mr-2">
+            <StatPill label="now" value={formatStatVal(primaryStat.current)} />
+            <StatPill label="avg" value={formatStatVal(primaryStat.avg)} />
+            <StatPill label="max" value={formatStatVal(primaryStat.max)} />
+            <StatPill label="min" value={formatStatVal(primaryStat.min)} />
+          </div>
+        )}
+        <div className="flex items-center gap-1 ml-auto shrink-0">
+          <button onClick={onMaximize} className="p-1 text-zinc-600 hover:text-zinc-300 transition-colors" title="Maximize">
+            <Maximize2 size={13} />
+          </button>
+          <button onClick={onToggleCollapse} className="p-1 text-zinc-600 hover:text-zinc-300 transition-colors" title={isCollapsed ? 'Expand' : 'Collapse'}>
+            {isCollapsed ? <ChevronDown size={13} /> : <ChevronUp size={13} />}
+          </button>
+        </div>
+      </div>
+      {/* Chart content */}
+      {!isCollapsed && (
+        <div className="flex-1 min-h-0 p-2">
+          <ResponsiveContainer width="100%" height="100%">
+            <LineChart data={data} syncId="host-dashboard">
+              <CartesianGrid strokeDasharray="3 3" stroke="#333" />
+              <XAxis dataKey="time" stroke="#666" tick={{ fontSize: 11 }} interval="preserveStartEnd" />
+              <YAxis stroke="#666" tick={{ fontSize: 11 }} domain={config.yDomain} />
+              <Tooltip contentStyle={TOOLTIP_STYLE} />
+              {config.lines.map(line => (
+                <Line key={line.dataKey} dataKey={line.dataKey} stroke={line.stroke} dot={false} connectNulls strokeWidth={1.5} name={line.name} />
+              ))}
+            </LineChart>
+          </ResponsiveContainer>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function MaximizedOverlay({ config, data, onClose }: {
+  config: PanelConfig; data: Record<string, unknown>[]; onClose: () => void
+}) {
+  const primaryStat = config.statKeys[0] ? computeStats(data, config.statKeys[0].key) : null
+
+  return (
+    <div className="fixed inset-0 z-30 bg-zinc-950/98 flex flex-col" onClick={onClose}>
+      <div className="flex items-center gap-3 px-6 py-4 border-b border-zinc-800 shrink-0" onClick={e => e.stopPropagation()}>
+        <h2 className="text-lg font-semibold text-zinc-200">{config.title}</h2>
+        {primaryStat && (
+          <div className="flex gap-3 ml-4">
+            <StatPill label="now" value={formatStatVal(primaryStat.current)} />
+            <StatPill label="avg" value={formatStatVal(primaryStat.avg)} />
+            <StatPill label="max" value={formatStatVal(primaryStat.max)} />
+            <StatPill label="min" value={formatStatVal(primaryStat.min)} />
+          </div>
+        )}
+        <button onClick={onClose} className="ml-auto p-2 text-zinc-400 hover:text-zinc-100 transition-colors" title="Close (Escape)">
+          <Minimize2 size={18} />
+        </button>
+      </div>
+      <div className="flex-1 p-6" onClick={e => e.stopPropagation()}>
+        <ResponsiveContainer width="100%" height="100%">
+          <LineChart data={data} syncId="host-dashboard">
+            <CartesianGrid strokeDasharray="3 3" stroke="#333" />
+            <XAxis dataKey="time" stroke="#666" tick={{ fontSize: 12 }} interval="preserveStartEnd" />
+            <YAxis stroke="#666" tick={{ fontSize: 12 }} domain={config.yDomain} />
+            <Tooltip contentStyle={TOOLTIP_STYLE} />
+            {config.lines.map(line => (
+              <Line key={line.dataKey} dataKey={line.dataKey} stroke={line.stroke} dot={false} connectNulls strokeWidth={2} name={line.name} />
+            ))}
+          </LineChart>
+        </ResponsiveContainer>
+      </div>
     </div>
   )
 }
@@ -593,38 +694,5 @@ function StatPill({ label, value }: { label: string; value: string }) {
     <span className="text-xs text-zinc-500">
       <span className="text-zinc-600">{label}</span> {value}
     </span>
-  )
-}
-
-function DashboardChart({ title, data, stats, children }: {
-  title: string
-  data: Record<string, unknown>[]
-  stats: { key: string; label: string }[]
-  children: React.ReactNode
-}) {
-  const primaryStat = stats[0] ? computeStats(data, stats[0].key) : null
-
-  const formatVal = (v: number | null) => {
-    if (v == null) return '—'
-    if (Math.abs(v) >= 1000) return v.toFixed(0)
-    if (Math.abs(v) >= 100) return v.toFixed(1)
-    return v.toFixed(2)
-  }
-
-  return (
-    <div className="bg-zinc-900 border border-zinc-800 rounded-lg p-4">
-      <div className="flex items-center justify-between mb-3">
-        <h3 className="text-sm font-medium text-zinc-300">{title}</h3>
-        {primaryStat && (
-          <div className="flex gap-3">
-            <StatPill label="now" value={formatVal(primaryStat.current)} />
-            <StatPill label="avg" value={formatVal(primaryStat.avg)} />
-            <StatPill label="max" value={formatVal(primaryStat.max)} />
-            <StatPill label="min" value={formatVal(primaryStat.min)} />
-          </div>
-        )}
-      </div>
-      {children}
-    </div>
   )
 }
