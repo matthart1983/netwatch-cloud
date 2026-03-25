@@ -633,8 +633,8 @@ function ChartPanel({ config, data, isCollapsed, isLocked, onToggleCollapse, onM
       </div>
       {/* Chart content */}
       {!isCollapsed && (
-        <div className="flex-1 min-h-0 p-2">
-          <ResponsiveContainer width="100%" height="100%">
+        <div className="flex-1 min-h-0 p-2" style={{ minHeight: 120 }}>
+          <ResponsiveContainer width="100%" height="100%" minHeight={100}>
             <LineChart data={data} syncId="host-dashboard">
               <CartesianGrid strokeDasharray="3 3" stroke="#333" />
               <XAxis dataKey="time" stroke="#666" tick={{ fontSize: 11 }} interval="preserveStartEnd" />
