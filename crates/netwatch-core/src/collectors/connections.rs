@@ -21,7 +21,19 @@ pub fn count_established_connections() -> u32 {
     count_file("/proc/net/tcp") + count_file("/proc/net/tcp6")
 }
 
-#[cfg(not(target_os = "linux"))]
+#[cfg(target_os = "macos")]
+pub fn count_established_connections() -> u32 {
+    let output = std::process::Command::new("netstat")
+        .args(["-an", "-p", "tcp"])
+        .output();
+    let Ok(output) = output else { return 0 };
+    let text = String::from_utf8_lossy(&output.stdout);
+    text.lines()
+        .filter(|l| l.contains("ESTABLISHED"))
+        .count() as u32
+}
+
+#[cfg(not(any(target_os = "linux", target_os = "macos")))]
 pub fn count_established_connections() -> u32 {
     0
 }
@@ -65,7 +77,39 @@ pub fn collect_tcp_states() -> TcpStates {
     }
 }
 
-#[cfg(not(target_os = "linux"))]
+#[cfg(target_os = "macos")]
+pub fn collect_tcp_states() -> TcpStates {
+    let output = std::process::Command::new("netstat")
+        .args(["-an", "-p", "tcp"])
+        .output();
+    let Ok(output) = output else {
+        return TcpStates {
+            established: 0,
+            time_wait: 0,
+            close_wait: 0,
+        };
+    };
+    let text = String::from_utf8_lossy(&output.stdout);
+    let mut established = 0u32;
+    let mut time_wait = 0u32;
+    let mut close_wait = 0u32;
+    for line in text.lines() {
+        if line.contains("ESTABLISHED") {
+            established += 1;
+        } else if line.contains("TIME_WAIT") {
+            time_wait += 1;
+        } else if line.contains("CLOSE_WAIT") {
+            close_wait += 1;
+        }
+    }
+    TcpStates {
+        established,
+        time_wait,
+        close_wait,
+    }
+}
+
+#[cfg(not(any(target_os = "linux", target_os = "macos")))]
 pub fn collect_tcp_states() -> TcpStates {
     TcpStates {
         established: 0,

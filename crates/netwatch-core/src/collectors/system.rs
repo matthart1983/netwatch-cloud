@@ -1,19 +1,23 @@
+#[derive(Debug)]
 pub struct CpuInfo {
     pub model: Option<String>,
     pub cores: Option<u32>,
 }
 
+#[derive(Debug)]
 pub struct MemoryInfo {
     pub total_bytes: u64,
     pub available_bytes: u64,
     pub used_bytes: u64,
 }
 
+#[derive(Debug)]
 pub struct SwapInfo {
     pub total_bytes: u64,
     pub used_bytes: u64,
 }
 
+#[derive(Debug)]
 pub struct LoadAvg {
     pub one: f64,
     pub five: f64,
@@ -193,40 +197,153 @@ mod linux {
     }
 }
 
-#[cfg(not(target_os = "linux"))]
-mod non_linux {
+#[cfg(target_os = "macos")]
+mod macos {
     use super::*;
+    use std::process::Command;
 
     pub fn detect_cpu_info() -> CpuInfo {
-        CpuInfo {
-            model: None,
-            cores: None,
-        }
+        let model = Command::new("sysctl")
+            .args(["-n", "machdep.cpu.brand_string"])
+            .output()
+            .ok()
+            .and_then(|o| {
+                let s = String::from_utf8_lossy(&o.stdout).trim().to_string();
+                if s.is_empty() { None } else { Some(s) }
+            });
+        let cores = Command::new("sysctl")
+            .args(["-n", "hw.ncpu"])
+            .output()
+            .ok()
+            .and_then(|o| String::from_utf8_lossy(&o.stdout).trim().parse().ok());
+        CpuInfo { model, cores }
     }
 
     pub fn detect_memory_total() -> Option<u64> {
-        None
+        let output = Command::new("sysctl")
+            .args(["-n", "hw.memsize"])
+            .output()
+            .ok()?;
+        String::from_utf8_lossy(&output.stdout).trim().parse().ok()
+    }
+
+    fn num_cpus() -> Option<u32> {
+        Command::new("sysctl")
+            .args(["-n", "hw.ncpu"])
+            .output()
+            .ok()
+            .and_then(|o| String::from_utf8_lossy(&o.stdout).trim().parse().ok())
     }
 
     pub fn measure_cpu_usage() -> Option<f64> {
-        None
+        let output = Command::new("ps")
+            .args(["-A", "-o", "%cpu"])
+            .output()
+            .ok()?;
+        let text = String::from_utf8_lossy(&output.stdout);
+        let total: f64 = text
+            .lines()
+            .skip(1)
+            .filter_map(|l| l.trim().parse::<f64>().ok())
+            .sum();
+        let cores = num_cpus().unwrap_or(1) as f64;
+        let pct = (total / cores).min(100.0);
+        Some((pct * 10.0).round() / 10.0)
     }
 
     pub fn read_memory() -> Option<MemoryInfo> {
-        None
+        let total_bytes = detect_memory_total()?;
+        let output = Command::new("vm_stat").output().ok()?;
+        let text = String::from_utf8_lossy(&output.stdout);
+
+        let page_size: u64 = text
+            .lines()
+            .next()
+            .and_then(|l| l.split("page size of ").nth(1))
+            .and_then(|s| s.split_whitespace().next())
+            .and_then(|s| s.parse().ok())
+            .unwrap_or(16384);
+
+        let get_pages = |name: &str| -> u64 {
+            text.lines()
+                .find(|l| l.starts_with(name))
+                .and_then(|l| l.split(':').nth(1))
+                .and_then(|s| s.trim().trim_end_matches('.').parse().ok())
+                .unwrap_or(0)
+        };
+
+        let free = get_pages("Pages free") * page_size;
+        let inactive = get_pages("Pages inactive") * page_size;
+        let speculative = get_pages("Pages speculative") * page_size;
+        let available = free + inactive + speculative;
+        let used = total_bytes.saturating_sub(available);
+
+        Some(MemoryInfo {
+            total_bytes,
+            available_bytes: available,
+            used_bytes: used,
+        })
     }
 
     pub fn read_load_avg() -> Option<LoadAvg> {
-        None
+        let mut loads: [f64; 3] = [0.0; 3];
+        let ret = unsafe { libc::getloadavg(loads.as_mut_ptr(), 3) };
+        if ret < 3 {
+            return None;
+        }
+        Some(LoadAvg {
+            one: loads[0],
+            five: loads[1],
+            fifteen: loads[2],
+        })
     }
 
     pub fn read_swap() -> Option<SwapInfo> {
-        None
+        let output = Command::new("sysctl")
+            .args(["-n", "vm.swapusage"])
+            .output()
+            .ok()?;
+        let text = String::from_utf8_lossy(&output.stdout);
+        let parse_mb = |prefix: &str| -> Option<u64> {
+            text.split(prefix)
+                .nth(1)?
+                .trim()
+                .split('M')
+                .next()?
+                .trim()
+                .parse::<f64>()
+                .ok()
+                .map(|mb| (mb * 1024.0 * 1024.0) as u64)
+        };
+        let total = parse_mb("total =")?;
+        let used = parse_mb("used =").unwrap_or(0);
+        Some(SwapInfo {
+            total_bytes: total,
+            used_bytes: used,
+        })
     }
+}
+
+#[cfg(not(any(target_os = "linux", target_os = "macos")))]
+mod fallback {
+    use super::*;
+
+    pub fn detect_cpu_info() -> CpuInfo {
+        CpuInfo { model: None, cores: None }
+    }
+
+    pub fn detect_memory_total() -> Option<u64> { None }
+    pub fn measure_cpu_usage() -> Option<f64> { None }
+    pub fn read_memory() -> Option<MemoryInfo> { None }
+    pub fn read_load_avg() -> Option<LoadAvg> { None }
+    pub fn read_swap() -> Option<SwapInfo> { None }
 }
 
 #[cfg(target_os = "linux")]
 pub use linux::*;
 
-#[cfg(not(target_os = "linux"))]
-pub use non_linux::*;
+#[cfg(target_os = "macos")]
+pub use macos::*;
+
+#[cfg(not(any(target_os = "linux", target_os = "macos")))]
+pub use fallback::*;

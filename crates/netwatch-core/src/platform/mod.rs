@@ -1,4 +1,6 @@
+#[cfg(not(any(target_os = "linux", target_os = "macos")))]
 use anyhow::Result;
+#[cfg(not(any(target_os = "linux", target_os = "macos")))]
 use std::collections::HashMap;
 
 #[derive(Debug, Clone)]
@@ -17,11 +19,15 @@ pub struct InterfaceStats {
 
 #[cfg(target_os = "linux")]
 mod linux;
-
 #[cfg(target_os = "linux")]
 pub use linux::collect_interface_stats;
 
-#[cfg(not(target_os = "linux"))]
+#[cfg(target_os = "macos")]
+mod macos;
+#[cfg(target_os = "macos")]
+pub use macos::collect_interface_stats;
+
+#[cfg(not(any(target_os = "linux", target_os = "macos")))]
 pub fn collect_interface_stats() -> Result<HashMap<String, InterfaceStats>> {
     Ok(HashMap::new())
 }
