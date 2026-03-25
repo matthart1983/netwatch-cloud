@@ -43,9 +43,9 @@
 | 29 | CI (GitHub Actions) | ✅ Done | Check/test on push, cross-compile releases on tag |
 | 30 | Railway deployment | ✅ Done | API + Web + Postgres, all live |
 | 31 | Stripe billing | ❌ Not started | |
-| 32 | Data retention cleanup job | ❌ Not started | |
-| 33 | Rate limiting | ❌ Not started | |
-| 34 | Landing page | ❌ Not started | |
+| 32 | Data retention cleanup job | ✅ Done | Hourly: snapshots 72h, alert_events 30d, host offline 5m |
+| 33 | Rate limiting | ✅ Done | In-memory, per spec limits |
+| 34 | Landing page | ✅ Done | |
 
 ### Live URLs
 
@@ -1277,9 +1277,9 @@ A strict build sequence, designed to produce a working system as early as possib
 25. ✅ Deploy to Railway (API + Web + Postgres)
 26. ✅ Host offline detection (alert engine, 5 min timeout)
 27. ❌ Stripe integration (trial + subscription)
-28. ❌ Data retention cleanup job
-29. ❌ Rate limiting
-30. ❌ Landing page
+28. ✅ Data retention cleanup job
+29. ✅ Rate limiting
+30. ✅ Landing page
 31. ❌ Test with 3–5 design partners
 
 **Next up:** Stripe billing, data retention, rate limiting, landing page.

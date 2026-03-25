@@ -1,5 +1,5 @@
 use anyhow::Result;
-use axum::{routing::{get, post}, Router};
+use axum::{middleware, routing::{get, post}, Router};
 use sqlx::postgres::PgPoolOptions;
 use std::sync::Arc;
 use tower_http::cors::CorsLayer;
@@ -9,6 +9,8 @@ use tracing::info;
 mod alerts;
 mod auth;
 mod config;
+mod rate_limit;
+mod retention;
 mod routes;
 
 pub struct AppState {
@@ -51,6 +53,14 @@ async fn main() -> Result<()> {
         alerts::engine::run(alert_state).await;
     });
 
+    // Spawn data retention cleanup job (runs hourly)
+    let retention_state = state.clone();
+    tokio::spawn(async move {
+        retention::run(retention_state).await;
+    });
+
+    let limiter = rate_limit::RateLimiter::new();
+
     let app = Router::new()
         .route("/health", get(routes::health::health_check))
         .route("/install.sh", get(routes::install::install_script))
@@ -65,6 +75,8 @@ async fn main() -> Result<()> {
         .route("/api/v1/alerts/rules", get(routes::alerts::list_rules).post(routes::alerts::create_rule))
         .route("/api/v1/alerts/rules/{id}", axum::routing::put(routes::alerts::update_rule).delete(routes::alerts::delete_rule))
         .route("/api/v1/alerts/history", get(routes::alerts::alert_history))
+        .layer(middleware::from_fn(rate_limit::rate_limit_middleware))
+        .layer(axum::Extension(limiter))
         .layer(CorsLayer::permissive())
         .layer(TraceLayer::new_for_http())
         .with_state(state);

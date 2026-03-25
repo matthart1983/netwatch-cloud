@@ -1,10 +1,15 @@
 'use client'
 
 import Link from 'next/link'
+import { usePathname } from 'next/navigation'
 import { useAuth } from '@/lib/auth'
 
 export function Nav() {
   const { token, isLoading, logout } = useAuth()
+  const pathname = usePathname()
+
+  // Landing page has its own nav
+  if (!isLoading && !token && pathname === '/') return null
 
   return (
     <nav className="border-b border-zinc-800 bg-zinc-900/50">
