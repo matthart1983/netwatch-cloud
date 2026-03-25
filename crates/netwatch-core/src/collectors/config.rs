@@ -3,21 +3,23 @@ use std::process::Command;
 
 pub fn detect_gateway() -> Option<String> {
     // Linux: `ip route`
-    let output = Command::new("ip").args(["route"]).output().ok()?;
-    let text = String::from_utf8_lossy(&output.stdout);
-    for line in text.lines() {
-        if line.starts_with("default via ") {
-            return line.split_whitespace().nth(2).map(|s| s.to_string());
+    if let Ok(output) = Command::new("ip").args(["route"]).output() {
+        let text = String::from_utf8_lossy(&output.stdout);
+        for line in text.lines() {
+            if line.starts_with("default via ") {
+                return line.split_whitespace().nth(2).map(|s| s.to_string());
+            }
         }
     }
 
     // macOS fallback: `netstat -rn`
-    let output = Command::new("netstat").args(["-rn"]).output().ok()?;
-    let text = String::from_utf8_lossy(&output.stdout);
-    for line in text.lines() {
-        let cols: Vec<&str> = line.split_whitespace().collect();
-        if cols.len() >= 2 && cols[0] == "default" {
-            return Some(cols[1].to_string());
+    if let Ok(output) = Command::new("netstat").args(["-rn"]).output() {
+        let text = String::from_utf8_lossy(&output.stdout);
+        for line in text.lines() {
+            let cols: Vec<&str> = line.split_whitespace().collect();
+            if cols.len() >= 2 && cols[0] == "default" {
+                return Some(cols[1].to_string());
+            }
         }
     }
 

@@ -80,6 +80,7 @@ export default function HostDetailPage() {
       swap_used: p.swap_used_bytes != null ? p.swap_used_bytes / (1024 * 1024) : undefined,
       disk_read: p.disk_read_bytes != null ? p.disk_read_bytes / (1024 * 1024) : undefined,
       disk_write: p.disk_write_bytes != null ? p.disk_write_bytes / (1024 * 1024) : undefined,
+      disk_usage: p.disk_usage_pct ?? undefined,
       time_wait: p.tcp_time_wait ?? undefined,
       close_wait: p.tcp_close_wait ?? undefined,
       net_rx: p.net_rx_bytes != null ? p.net_rx_bytes / 1024 : undefined,
@@ -209,15 +210,14 @@ export default function HostDetailPage() {
             </ResponsiveContainer>
           </ChartCard>
 
-          <ChartCard title="Disk I/O (MB)">
+          <ChartCard title="Disk Utilisation (%)">
             <ResponsiveContainer width="100%" height={150}>
               <LineChart data={chartData}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#333" />
                 <XAxis dataKey="time" stroke="#666" tick={{ fontSize: 11 }} interval="preserveStartEnd" />
-                <YAxis stroke="#666" tick={{ fontSize: 11 }} />
+                <YAxis stroke="#666" tick={{ fontSize: 11 }} domain={[0, 100]} />
                 <Tooltip contentStyle={{ background: '#1a1a1a', border: '1px solid #333', fontSize: 12 }} />
-                <Line dataKey="disk_read" stroke="#38bdf8" dot={false} connectNulls strokeWidth={1.5} name="Read (MB)" />
-                <Line dataKey="disk_write" stroke="#f472b6" dot={false} connectNulls strokeWidth={1.5} name="Write (MB)" />
+                <Line dataKey="disk_usage" stroke="#f97316" dot={false} connectNulls strokeWidth={1.5} name="Disk %" />
               </LineChart>
             </ResponsiveContainer>
           </ChartCard>

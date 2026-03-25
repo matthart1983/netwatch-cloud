@@ -100,6 +100,7 @@ pub struct MetricPoint {
     pub swap_used_bytes: Option<i64>,
     pub disk_read_bytes: Option<i64>,
     pub disk_write_bytes: Option<i64>,
+    pub disk_usage_pct: Option<f64>,
     pub tcp_time_wait: Option<i32>,
     pub tcp_close_wait: Option<i32>,
     pub net_rx_bytes: Option<i64>,
@@ -166,6 +167,7 @@ pub async fn get_metrics(
                 swap_used_bytes: row.get("swap_used_bytes"),
                 disk_read_bytes: row.get("disk_read_bytes"),
                 disk_write_bytes: row.get("disk_write_bytes"),
+                disk_usage_pct: None,
                 tcp_time_wait: row.get("tcp_time_wait"),
                 tcp_close_wait: row.get("tcp_close_wait"),
                 net_rx_bytes: None,
@@ -203,13 +205,44 @@ pub async fn get_metrics(
         })
         .collect();
 
-    // Merge network data into points
+    // Fetch max disk usage % per snapshot time (highest mount point)
+    let disk_rows = sqlx::query(
+        r#"
+        SELECT time, MAX(usage_pct) as max_usage
+        FROM disk_metrics
+        WHERE host_id = $1 AND time >= $2 AND time <= $3
+        GROUP BY time
+        ORDER BY time ASC
+        "#,
+    )
+    .bind(id)
+    .bind(from)
+    .bind(to)
+    .fetch_all(&state.db)
+    .await
+    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    let disk_map: std::collections::HashMap<String, f64> = disk_rows
+        .iter()
+        .map(|row| {
+            use sqlx::Row;
+            let time: DateTime<Utc> = row.get("time");
+            let usage: Option<f64> = row.get("max_usage");
+            (time.to_rfc3339(), usage.unwrap_or(0.0))
+        })
+        .collect();
+
+    // Merge network + disk data into points
     let points: Vec<MetricPoint> = points
         .into_iter()
         .map(|mut p| {
-            if let Some(&(rx, tx)) = net_map.get(&p.time.to_rfc3339()) {
+            let key = p.time.to_rfc3339();
+            if let Some(&(rx, tx)) = net_map.get(&key) {
                 p.net_rx_bytes = Some(rx);
                 p.net_tx_bytes = Some(tx);
+            }
+            if let Some(&usage) = disk_map.get(&key) {
+                p.disk_usage_pct = Some(usage);
             }
             p
         })

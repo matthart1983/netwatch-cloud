@@ -86,6 +86,7 @@ export interface MetricPoint {
   swap_used_bytes: number | null
   disk_read_bytes: number | null
   disk_write_bytes: number | null
+  disk_usage_pct: number | null
   tcp_time_wait: number | null
   tcp_close_wait: number | null
   net_rx_bytes: number | null
