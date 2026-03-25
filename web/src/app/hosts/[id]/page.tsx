@@ -57,25 +57,33 @@ export default function HostDetailPage() {
     return <div className="text-zinc-400 mt-10">Loading...</div>
   }
 
-  const chartData = points.map((p, i) => ({
-    time: new Date(p.time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-    idx: i,
-    gateway_rtt: p.gateway_rtt_ms ?? null,
-    dns_rtt: p.dns_rtt_ms ?? null,
-    loss: p.gateway_loss_pct ?? null,
-    connections: p.connection_count ?? null,
-    cpu: p.cpu_usage_pct ?? null,
-    mem_used: p.memory_used_bytes != null ? p.memory_used_bytes / (1024 * 1024 * 1024) : null,
-    mem_avail: p.memory_available_bytes != null ? p.memory_available_bytes / (1024 * 1024 * 1024) : null,
-    load_1m: p.load_avg_1m ?? null,
-    load_5m: p.load_avg_5m ?? null,
-    load_15m: p.load_avg_15m ?? null,
-    swap_used: p.swap_used_bytes != null ? p.swap_used_bytes / (1024 * 1024) : null,
-    disk_read: p.disk_read_bytes != null ? p.disk_read_bytes / (1024 * 1024) : null,
-    disk_write: p.disk_write_bytes != null ? p.disk_write_bytes / (1024 * 1024) : null,
-    time_wait: p.tcp_time_wait ?? null,
-    close_wait: p.tcp_close_wait ?? null,
-  }))
+  // Deduplicate by time label — keep last point per minute for cleaner charts
+  const chartData: Record<string, unknown>[] = []
+  const seen = new Set<string>()
+  for (let i = points.length - 1; i >= 0; i--) {
+    const p = points[i]
+    const label = new Date(p.time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+    if (seen.has(label)) continue
+    seen.add(label)
+    chartData.unshift({
+      time: label,
+      gateway_rtt: p.gateway_rtt_ms ?? undefined,
+      dns_rtt: p.dns_rtt_ms ?? undefined,
+      loss: p.gateway_loss_pct ?? undefined,
+      connections: p.connection_count ?? undefined,
+      cpu: p.cpu_usage_pct ?? undefined,
+      mem_used: p.memory_used_bytes != null ? p.memory_used_bytes / (1024 * 1024 * 1024) : undefined,
+      mem_avail: p.memory_available_bytes != null ? p.memory_available_bytes / (1024 * 1024 * 1024) : undefined,
+      load_1m: p.load_avg_1m ?? undefined,
+      load_5m: p.load_avg_5m ?? undefined,
+      load_15m: p.load_avg_15m ?? undefined,
+      swap_used: p.swap_used_bytes != null ? p.swap_used_bytes / (1024 * 1024) : undefined,
+      disk_read: p.disk_read_bytes != null ? p.disk_read_bytes / (1024 * 1024) : undefined,
+      disk_write: p.disk_write_bytes != null ? p.disk_write_bytes / (1024 * 1024) : undefined,
+      time_wait: p.tcp_time_wait ?? undefined,
+      close_wait: p.tcp_close_wait ?? undefined,
+    })
+  }
 
   return (
     <div>
@@ -118,8 +126,8 @@ export default function HostDetailPage() {
                 <XAxis dataKey="time" stroke="#666" tick={{ fontSize: 11 }} interval="preserveStartEnd" />
                 <YAxis stroke="#666" tick={{ fontSize: 11 }} />
                 <Tooltip contentStyle={{ background: '#1a1a1a', border: '1px solid #333', fontSize: 12 }} />
-                <Line type="monotone" dataKey="gateway_rtt" stroke="#34d399" dot={false} strokeWidth={1.5} name="Gateway RTT" connectNulls />
-                <Line type="monotone" dataKey="dns_rtt" stroke="#60a5fa" dot={false} strokeWidth={1.5} name="DNS RTT" connectNulls />
+                <Line dataKey="gateway_rtt" stroke="#34d399" dot={false} connectNulls strokeWidth={1.5} name="Gateway RTT" />
+                <Line dataKey="dns_rtt" stroke="#60a5fa" dot={false} connectNulls strokeWidth={1.5} name="DNS RTT" />
               </LineChart>
             </ResponsiveContainer>
           </ChartCard>
@@ -131,7 +139,7 @@ export default function HostDetailPage() {
                 <XAxis dataKey="time" stroke="#666" tick={{ fontSize: 11 }} interval="preserveStartEnd" />
                 <YAxis stroke="#666" tick={{ fontSize: 11 }} domain={[0, 'auto']} />
                 <Tooltip contentStyle={{ background: '#1a1a1a', border: '1px solid #333', fontSize: 12 }} />
-                <Line type="monotone" dataKey="loss" stroke="#f87171" dot={false} strokeWidth={1.5} name="Loss %" connectNulls />
+                <Line dataKey="loss" stroke="#f87171" dot={false} connectNulls strokeWidth={1.5} name="Loss %" />
               </LineChart>
             </ResponsiveContainer>
           </ChartCard>
@@ -143,7 +151,7 @@ export default function HostDetailPage() {
                 <XAxis dataKey="time" stroke="#666" tick={{ fontSize: 11 }} interval="preserveStartEnd" />
                 <YAxis stroke="#666" tick={{ fontSize: 11 }} />
                 <Tooltip contentStyle={{ background: '#1a1a1a', border: '1px solid #333', fontSize: 12 }} />
-                <Line type="monotone" dataKey="connections" stroke="#a78bfa" dot={false} strokeWidth={1.5} name="Connections" connectNulls />
+                <Line dataKey="connections" stroke="#a78bfa" dot={false} connectNulls strokeWidth={1.5} name="Connections" />
               </LineChart>
             </ResponsiveContainer>
           </ChartCard>
@@ -155,7 +163,7 @@ export default function HostDetailPage() {
                 <XAxis dataKey="time" stroke="#666" tick={{ fontSize: 11 }} interval="preserveStartEnd" />
                 <YAxis stroke="#666" tick={{ fontSize: 11 }} domain={[0, 100]} />
                 <Tooltip contentStyle={{ background: '#1a1a1a', border: '1px solid #333', fontSize: 12 }} />
-                <Line type="monotone" dataKey="cpu" stroke="#fbbf24" dot={false} strokeWidth={1.5} name="CPU %" connectNulls />
+                <Line dataKey="cpu" stroke="#fbbf24" dot={false} connectNulls strokeWidth={1.5} name="CPU %" />
               </LineChart>
             </ResponsiveContainer>
           </ChartCard>
@@ -167,8 +175,8 @@ export default function HostDetailPage() {
                 <XAxis dataKey="time" stroke="#666" tick={{ fontSize: 11 }} interval="preserveStartEnd" />
                 <YAxis stroke="#666" tick={{ fontSize: 11 }} />
                 <Tooltip contentStyle={{ background: '#1a1a1a', border: '1px solid #333', fontSize: 12 }} />
-                <Line type="monotone" dataKey="mem_used" stroke="#f472b6" dot={false} strokeWidth={1.5} name="Used (GB)" connectNulls />
-                <Line type="monotone" dataKey="mem_avail" stroke="#38bdf8" dot={false} strokeWidth={1.5} name="Available (GB)" connectNulls />
+                <Line dataKey="mem_used" stroke="#f472b6" dot={false} connectNulls strokeWidth={1.5} name="Used (GB)" />
+                <Line dataKey="mem_avail" stroke="#38bdf8" dot={false} connectNulls strokeWidth={1.5} name="Available (GB)" />
               </LineChart>
             </ResponsiveContainer>
           </ChartCard>
@@ -180,9 +188,9 @@ export default function HostDetailPage() {
                 <XAxis dataKey="time" stroke="#666" tick={{ fontSize: 11 }} interval="preserveStartEnd" />
                 <YAxis stroke="#666" tick={{ fontSize: 11 }} />
                 <Tooltip contentStyle={{ background: '#1a1a1a', border: '1px solid #333', fontSize: 12 }} />
-                <Line type="monotone" dataKey="load_1m" stroke="#34d399" dot={false} strokeWidth={1.5} name="1m" connectNulls />
-                <Line type="monotone" dataKey="load_5m" stroke="#fbbf24" dot={false} strokeWidth={1.5} name="5m" connectNulls />
-                <Line type="monotone" dataKey="load_15m" stroke="#f87171" dot={false} strokeWidth={1.5} name="15m" connectNulls />
+                <Line dataKey="load_1m" stroke="#34d399" dot={false} connectNulls strokeWidth={1.5} name="1m" />
+                <Line dataKey="load_5m" stroke="#fbbf24" dot={false} connectNulls strokeWidth={1.5} name="5m" />
+                <Line dataKey="load_15m" stroke="#f87171" dot={false} connectNulls strokeWidth={1.5} name="15m" />
               </LineChart>
             </ResponsiveContainer>
           </ChartCard>
@@ -194,7 +202,7 @@ export default function HostDetailPage() {
                 <XAxis dataKey="time" stroke="#666" tick={{ fontSize: 11 }} interval="preserveStartEnd" />
                 <YAxis stroke="#666" tick={{ fontSize: 11 }} />
                 <Tooltip contentStyle={{ background: '#1a1a1a', border: '1px solid #333', fontSize: 12 }} />
-                <Line type="monotone" dataKey="swap_used" stroke="#f97316" dot={false} strokeWidth={1.5} name="Swap Used (MB)" connectNulls />
+                <Line dataKey="swap_used" stroke="#f97316" dot={false} connectNulls strokeWidth={1.5} name="Swap Used (MB)" />
               </LineChart>
             </ResponsiveContainer>
           </ChartCard>
@@ -206,8 +214,8 @@ export default function HostDetailPage() {
                 <XAxis dataKey="time" stroke="#666" tick={{ fontSize: 11 }} interval="preserveStartEnd" />
                 <YAxis stroke="#666" tick={{ fontSize: 11 }} />
                 <Tooltip contentStyle={{ background: '#1a1a1a', border: '1px solid #333', fontSize: 12 }} />
-                <Line type="monotone" dataKey="disk_read" stroke="#38bdf8" dot={false} strokeWidth={1.5} name="Read (MB)" connectNulls />
-                <Line type="monotone" dataKey="disk_write" stroke="#f472b6" dot={false} strokeWidth={1.5} name="Write (MB)" connectNulls />
+                <Line dataKey="disk_read" stroke="#38bdf8" dot={false} connectNulls strokeWidth={1.5} name="Read (MB)" />
+                <Line dataKey="disk_write" stroke="#f472b6" dot={false} connectNulls strokeWidth={1.5} name="Write (MB)" />
               </LineChart>
             </ResponsiveContainer>
           </ChartCard>
@@ -219,8 +227,8 @@ export default function HostDetailPage() {
                 <XAxis dataKey="time" stroke="#666" tick={{ fontSize: 11 }} interval="preserveStartEnd" />
                 <YAxis stroke="#666" tick={{ fontSize: 11 }} />
                 <Tooltip contentStyle={{ background: '#1a1a1a', border: '1px solid #333', fontSize: 12 }} />
-                <Line type="monotone" dataKey="time_wait" stroke="#fbbf24" dot={false} strokeWidth={1.5} name="TIME_WAIT" connectNulls />
-                <Line type="monotone" dataKey="close_wait" stroke="#f87171" dot={false} strokeWidth={1.5} name="CLOSE_WAIT" connectNulls />
+                <Line dataKey="time_wait" stroke="#fbbf24" dot={false} connectNulls strokeWidth={1.5} name="TIME_WAIT" />
+                <Line dataKey="close_wait" stroke="#f87171" dot={false} connectNulls strokeWidth={1.5} name="CLOSE_WAIT" />
               </LineChart>
             </ResponsiveContainer>
           </ChartCard>
