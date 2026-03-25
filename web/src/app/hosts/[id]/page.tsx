@@ -117,8 +117,8 @@ export default function HostDetailPage() {
                 <XAxis dataKey="time" stroke="#666" tick={{ fontSize: 11 }} />
                 <YAxis stroke="#666" tick={{ fontSize: 11 }} />
                 <Tooltip contentStyle={{ background: '#1a1a1a', border: '1px solid #333', fontSize: 12 }} />
-                <Line type="monotone" dataKey="gateway_rtt" stroke="#34d399" dot={false} strokeWidth={1.5} name="Gateway RTT" />
-                <Line type="monotone" dataKey="dns_rtt" stroke="#60a5fa" dot={false} strokeWidth={1.5} name="DNS RTT" />
+                <Line type="monotone" dataKey="gateway_rtt" stroke="#34d399" dot={false} strokeWidth={1.5} name="Gateway RTT" connectNulls />
+                <Line type="monotone" dataKey="dns_rtt" stroke="#60a5fa" dot={false} strokeWidth={1.5} name="DNS RTT" connectNulls />
               </LineChart>
             </ResponsiveContainer>
           </ChartCard>
@@ -130,7 +130,7 @@ export default function HostDetailPage() {
                 <XAxis dataKey="time" stroke="#666" tick={{ fontSize: 11 }} />
                 <YAxis stroke="#666" tick={{ fontSize: 11 }} domain={[0, 'auto']} />
                 <Tooltip contentStyle={{ background: '#1a1a1a', border: '1px solid #333', fontSize: 12 }} />
-                <Line type="monotone" dataKey="loss" stroke="#f87171" dot={false} strokeWidth={1.5} name="Loss %" />
+                <Line type="monotone" dataKey="loss" stroke="#f87171" dot={false} strokeWidth={1.5} name="Loss %" connectNulls />
               </LineChart>
             </ResponsiveContainer>
           </ChartCard>
@@ -142,7 +142,7 @@ export default function HostDetailPage() {
                 <XAxis dataKey="time" stroke="#666" tick={{ fontSize: 11 }} />
                 <YAxis stroke="#666" tick={{ fontSize: 11 }} />
                 <Tooltip contentStyle={{ background: '#1a1a1a', border: '1px solid #333', fontSize: 12 }} />
-                <Line type="monotone" dataKey="connections" stroke="#a78bfa" dot={false} strokeWidth={1.5} name="Connections" />
+                <Line type="monotone" dataKey="connections" stroke="#a78bfa" dot={false} strokeWidth={1.5} name="Connections" connectNulls />
               </LineChart>
             </ResponsiveContainer>
           </ChartCard>
@@ -154,7 +154,7 @@ export default function HostDetailPage() {
                 <XAxis dataKey="time" stroke="#666" tick={{ fontSize: 11 }} />
                 <YAxis stroke="#666" tick={{ fontSize: 11 }} domain={[0, 100]} />
                 <Tooltip contentStyle={{ background: '#1a1a1a', border: '1px solid #333', fontSize: 12 }} />
-                <Line type="monotone" dataKey="cpu" stroke="#fbbf24" dot={false} strokeWidth={1.5} name="CPU %" />
+                <Line type="monotone" dataKey="cpu" stroke="#fbbf24" dot={false} strokeWidth={1.5} name="CPU %" connectNulls />
               </LineChart>
             </ResponsiveContainer>
           </ChartCard>
@@ -166,8 +166,8 @@ export default function HostDetailPage() {
                 <XAxis dataKey="time" stroke="#666" tick={{ fontSize: 11 }} />
                 <YAxis stroke="#666" tick={{ fontSize: 11 }} />
                 <Tooltip contentStyle={{ background: '#1a1a1a', border: '1px solid #333', fontSize: 12 }} />
-                <Line type="monotone" dataKey="mem_used" stroke="#f472b6" dot={false} strokeWidth={1.5} name="Used (GB)" />
-                <Line type="monotone" dataKey="mem_avail" stroke="#38bdf8" dot={false} strokeWidth={1.5} name="Available (GB)" />
+                <Line type="monotone" dataKey="mem_used" stroke="#f472b6" dot={false} strokeWidth={1.5} name="Used (GB)" connectNulls />
+                <Line type="monotone" dataKey="mem_avail" stroke="#38bdf8" dot={false} strokeWidth={1.5} name="Available (GB)" connectNulls />
               </LineChart>
             </ResponsiveContainer>
           </ChartCard>
@@ -179,9 +179,9 @@ export default function HostDetailPage() {
                 <XAxis dataKey="time" stroke="#666" tick={{ fontSize: 11 }} />
                 <YAxis stroke="#666" tick={{ fontSize: 11 }} />
                 <Tooltip contentStyle={{ background: '#1a1a1a', border: '1px solid #333', fontSize: 12 }} />
-                <Line type="monotone" dataKey="load_1m" stroke="#34d399" dot={false} strokeWidth={1.5} name="1m" />
-                <Line type="monotone" dataKey="load_5m" stroke="#fbbf24" dot={false} strokeWidth={1.5} name="5m" />
-                <Line type="monotone" dataKey="load_15m" stroke="#f87171" dot={false} strokeWidth={1.5} name="15m" />
+                <Line type="monotone" dataKey="load_1m" stroke="#34d399" dot={false} strokeWidth={1.5} name="1m" connectNulls />
+                <Line type="monotone" dataKey="load_5m" stroke="#fbbf24" dot={false} strokeWidth={1.5} name="5m" connectNulls />
+                <Line type="monotone" dataKey="load_15m" stroke="#f87171" dot={false} strokeWidth={1.5} name="15m" connectNulls />
               </LineChart>
             </ResponsiveContainer>
           </ChartCard>
@@ -193,7 +193,7 @@ export default function HostDetailPage() {
                 <XAxis dataKey="time" stroke="#666" tick={{ fontSize: 11 }} />
                 <YAxis stroke="#666" tick={{ fontSize: 11 }} />
                 <Tooltip contentStyle={{ background: '#1a1a1a', border: '1px solid #333', fontSize: 12 }} />
-                <Line type="monotone" dataKey="swap_used" stroke="#f97316" dot={false} strokeWidth={1.5} name="Swap Used (MB)" />
+                <Line type="monotone" dataKey="swap_used" stroke="#f97316" dot={false} strokeWidth={1.5} name="Swap Used (MB)" connectNulls />
               </LineChart>
             </ResponsiveContainer>
           </ChartCard>
@@ -205,8 +205,8 @@ export default function HostDetailPage() {
                 <XAxis dataKey="time" stroke="#666" tick={{ fontSize: 11 }} />
                 <YAxis stroke="#666" tick={{ fontSize: 11 }} />
                 <Tooltip contentStyle={{ background: '#1a1a1a', border: '1px solid #333', fontSize: 12 }} />
-                <Line type="monotone" dataKey="disk_read" stroke="#38bdf8" dot={false} strokeWidth={1.5} name="Read (MB)" />
-                <Line type="monotone" dataKey="disk_write" stroke="#f472b6" dot={false} strokeWidth={1.5} name="Write (MB)" />
+                <Line type="monotone" dataKey="disk_read" stroke="#38bdf8" dot={false} strokeWidth={1.5} name="Read (MB)" connectNulls />
+                <Line type="monotone" dataKey="disk_write" stroke="#f472b6" dot={false} strokeWidth={1.5} name="Write (MB)" connectNulls />
               </LineChart>
             </ResponsiveContainer>
           </ChartCard>
@@ -218,8 +218,8 @@ export default function HostDetailPage() {
                 <XAxis dataKey="time" stroke="#666" tick={{ fontSize: 11 }} />
                 <YAxis stroke="#666" tick={{ fontSize: 11 }} />
                 <Tooltip contentStyle={{ background: '#1a1a1a', border: '1px solid #333', fontSize: 12 }} />
-                <Line type="monotone" dataKey="time_wait" stroke="#fbbf24" dot={false} strokeWidth={1.5} name="TIME_WAIT" />
-                <Line type="monotone" dataKey="close_wait" stroke="#f87171" dot={false} strokeWidth={1.5} name="CLOSE_WAIT" />
+                <Line type="monotone" dataKey="time_wait" stroke="#fbbf24" dot={false} strokeWidth={1.5} name="TIME_WAIT" connectNulls />
+                <Line type="monotone" dataKey="close_wait" stroke="#f87171" dot={false} strokeWidth={1.5} name="CLOSE_WAIT" connectNulls />
               </LineChart>
             </ResponsiveContainer>
           </ChartCard>
