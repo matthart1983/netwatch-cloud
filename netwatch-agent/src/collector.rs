@@ -1,6 +1,6 @@
 use crate::config::AgentConfig;
 use chrono::Utc;
-use netwatch_core::collectors::{config as net_config, connections, health, system};
+use netwatch_core::collectors::{config as net_config, connections, disk, health, system};
 use netwatch_core::platform;
 use netwatch_core::types::{HealthMetric, InterfaceMetric, Snapshot, SystemMetric};
 use std::collections::HashMap;
@@ -49,6 +49,7 @@ impl MetricsCollector {
             let cpu = system::measure_cpu_usage();
             let mem = system::read_memory();
             let load = system::read_load_avg();
+            let swap = system::read_swap();
             Some(SystemMetric {
                 cpu_usage_pct: cpu,
                 memory_total_bytes: mem.as_ref().map(|m| m.total_bytes),
@@ -57,8 +58,14 @@ impl MetricsCollector {
                 load_avg_1m: load.as_ref().map(|l| l.one),
                 load_avg_5m: load.as_ref().map(|l| l.five),
                 load_avg_15m: load.as_ref().map(|l| l.fifteen),
+                swap_total_bytes: swap.as_ref().map(|s| s.total_bytes),
+                swap_used_bytes: swap.as_ref().map(|s| s.used_bytes),
             })
         };
+
+        let tcp_states = connections::collect_tcp_states();
+        let disk_usage_data = disk::collect_disk_usage();
+        let disk_io_data = disk::collect_disk_io();
 
         Snapshot {
             timestamp: Utc::now(),
@@ -66,6 +73,10 @@ impl MetricsCollector {
             health,
             connection_count,
             system: system_metric,
+            disk_usage: if disk_usage_data.is_empty() { None } else { Some(disk_usage_data) },
+            disk_io: disk_io_data,
+            tcp_time_wait: Some(tcp_states.time_wait),
+            tcp_close_wait: Some(tcp_states.close_wait),
         }
     }
 

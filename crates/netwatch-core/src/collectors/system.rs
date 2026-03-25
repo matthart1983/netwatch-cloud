@@ -9,6 +9,11 @@ pub struct MemoryInfo {
     pub used_bytes: u64,
 }
 
+pub struct SwapInfo {
+    pub total_bytes: u64,
+    pub used_bytes: u64,
+}
+
 pub struct LoadAvg {
     pub one: f64,
     pub five: f64,
@@ -137,6 +142,29 @@ mod linux {
             fifteen: parts[2].parse().ok()?,
         })
     }
+
+    pub fn read_swap() -> Option<SwapInfo> {
+        let contents = fs::read_to_string("/proc/meminfo").ok()?;
+        let mut swap_total_kb = 0u64;
+        let mut swap_free_kb = 0u64;
+
+        for line in contents.lines() {
+            let parts: Vec<&str> = line.split_whitespace().collect();
+            if parts.len() < 2 {
+                continue;
+            }
+            match parts[0] {
+                "SwapTotal:" => swap_total_kb = parts[1].parse().unwrap_or(0),
+                "SwapFree:" => swap_free_kb = parts[1].parse().unwrap_or(0),
+                _ => {}
+            }
+        }
+
+        Some(SwapInfo {
+            total_bytes: swap_total_kb * 1024,
+            used_bytes: swap_total_kb.saturating_sub(swap_free_kb) * 1024,
+        })
+    }
 }
 
 #[cfg(not(target_os = "linux"))]
@@ -163,6 +191,10 @@ mod non_linux {
     }
 
     pub fn read_load_avg() -> Option<LoadAvg> {
+        None
+    }
+
+    pub fn read_swap() -> Option<SwapInfo> {
         None
     }
 }

@@ -116,10 +116,14 @@ The agent collects exactly 5 metric groups. Nothing else.
 | 3 | **Packet loss** to gateway and primary DNS | `ping -c 3 -W 1 <target>` | No | 30s |
 | 4 | **Latency** (RTT ms) to gateway and primary DNS | Same ping as above | No | 30s |
 | 5 | **Connection count** (total established TCP connections) | `/proc/net/tcp` + `/proc/net/tcp6` | No | 15s |
-| 6 | **CPU usage** (%) | `/proc/stat` (200ms sample) | No | 15s |
-| 7 | **Memory** (total, used, available bytes) | `/proc/meminfo` | No | 15s |
-| 8 | **Load average** (1m, 5m, 15m) | `/proc/loadavg` | No | 15s |
-| 9 | **Heartbeat** (agent is alive, with host metadata) | Implicit in every POST | No | 15s |
+| 6 | **TCP connection states** (TIME_WAIT, CLOSE_WAIT counts) | `/proc/net/tcp` + `/proc/net/tcp6` | No | 15s |
+| 7 | **CPU usage** (%) | `/proc/stat` (200ms sample) | No | 15s |
+| 8 | **Memory** (total, used, available bytes) | `/proc/meminfo` | No | 15s |
+| 9 | **Swap usage** (total, used bytes) | `/proc/meminfo` | No | 15s |
+| 10 | **Load average** (1m, 5m, 15m) | `/proc/loadavg` | No | 15s |
+| 11 | **Disk usage** (total, used, available, % per mount) | `/proc/mounts` + `statvfs()` | No | 15s |
+| 12 | **Disk I/O** (read/write bytes) | `/proc/diskstats` | No | 15s |
+| 13 | **Heartbeat** (agent is alive, with host metadata) | Implicit in every POST | No | 15s |
 
 Host metadata collected once on startup: hostname, OS, kernel, uptime, CPU model, CPU cores, total memory.
 

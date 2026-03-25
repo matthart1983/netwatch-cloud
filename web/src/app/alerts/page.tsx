@@ -16,6 +16,13 @@ const METRICS = [
   { value: 'dns_rtt_ms', label: 'DNS Latency (ms)', type: 'numeric' },
   { value: 'dns_loss_pct', label: 'DNS Packet Loss (%)', type: 'numeric' },
   { value: 'connection_count', label: 'Connection Count', type: 'numeric' },
+  { value: 'cpu_usage_pct', label: 'CPU Usage (%)', type: 'numeric' },
+  { value: 'swap_used_bytes', label: 'Swap Used (bytes)', type: 'numeric' },
+  { value: 'disk_usage_pct', label: 'Disk Usage (%)', type: 'numeric' },
+  { value: 'disk_read_bytes', label: 'Disk Read (bytes)', type: 'numeric' },
+  { value: 'disk_write_bytes', label: 'Disk Write (bytes)', type: 'numeric' },
+  { value: 'tcp_time_wait', label: 'TCP TIME_WAIT Count', type: 'numeric' },
+  { value: 'tcp_close_wait', label: 'TCP CLOSE_WAIT Count', type: 'numeric' },
 ]
 
 export default function AlertsPage() {

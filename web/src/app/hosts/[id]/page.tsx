@@ -69,6 +69,11 @@ export default function HostDetailPage() {
     load_1m: p.load_avg_1m,
     load_5m: p.load_avg_5m,
     load_15m: p.load_avg_15m,
+    swap_used: p.swap_used_bytes ? p.swap_used_bytes / (1024 * 1024) : null,
+    disk_read: p.disk_read_bytes ? p.disk_read_bytes / (1024 * 1024) : null,
+    disk_write: p.disk_write_bytes ? p.disk_write_bytes / (1024 * 1024) : null,
+    time_wait: p.tcp_time_wait,
+    close_wait: p.tcp_close_wait,
   }))
 
   return (
@@ -177,6 +182,44 @@ export default function HostDetailPage() {
                 <Line type="monotone" dataKey="load_1m" stroke="#34d399" dot={false} strokeWidth={1.5} name="1m" />
                 <Line type="monotone" dataKey="load_5m" stroke="#fbbf24" dot={false} strokeWidth={1.5} name="5m" />
                 <Line type="monotone" dataKey="load_15m" stroke="#f87171" dot={false} strokeWidth={1.5} name="15m" />
+              </LineChart>
+            </ResponsiveContainer>
+          </ChartCard>
+
+          <ChartCard title="Swap Usage (MB)">
+            <ResponsiveContainer width="100%" height={150}>
+              <LineChart data={chartData}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#333" />
+                <XAxis dataKey="time" stroke="#666" tick={{ fontSize: 11 }} />
+                <YAxis stroke="#666" tick={{ fontSize: 11 }} />
+                <Tooltip contentStyle={{ background: '#1a1a1a', border: '1px solid #333', fontSize: 12 }} />
+                <Line type="monotone" dataKey="swap_used" stroke="#f97316" dot={false} strokeWidth={1.5} name="Swap Used (MB)" />
+              </LineChart>
+            </ResponsiveContainer>
+          </ChartCard>
+
+          <ChartCard title="Disk I/O (MB)">
+            <ResponsiveContainer width="100%" height={150}>
+              <LineChart data={chartData}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#333" />
+                <XAxis dataKey="time" stroke="#666" tick={{ fontSize: 11 }} />
+                <YAxis stroke="#666" tick={{ fontSize: 11 }} />
+                <Tooltip contentStyle={{ background: '#1a1a1a', border: '1px solid #333', fontSize: 12 }} />
+                <Line type="monotone" dataKey="disk_read" stroke="#38bdf8" dot={false} strokeWidth={1.5} name="Read (MB)" />
+                <Line type="monotone" dataKey="disk_write" stroke="#f472b6" dot={false} strokeWidth={1.5} name="Write (MB)" />
+              </LineChart>
+            </ResponsiveContainer>
+          </ChartCard>
+
+          <ChartCard title="TCP Connection States">
+            <ResponsiveContainer width="100%" height={150}>
+              <LineChart data={chartData}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#333" />
+                <XAxis dataKey="time" stroke="#666" tick={{ fontSize: 11 }} />
+                <YAxis stroke="#666" tick={{ fontSize: 11 }} />
+                <Tooltip contentStyle={{ background: '#1a1a1a', border: '1px solid #333', fontSize: 12 }} />
+                <Line type="monotone" dataKey="time_wait" stroke="#fbbf24" dot={false} strokeWidth={1.5} name="TIME_WAIT" />
+                <Line type="monotone" dataKey="close_wait" stroke="#f87171" dot={false} strokeWidth={1.5} name="CLOSE_WAIT" />
               </LineChart>
             </ResponsiveContainer>
           </ChartCard>

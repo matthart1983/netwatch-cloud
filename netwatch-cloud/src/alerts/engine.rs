@@ -204,6 +204,32 @@ async fn check_condition(
                 && any_down == Some(true);
             Ok((met, None))
         }
+        "disk_usage_pct" => {
+            let value: Option<f64> = sqlx::query_scalar(
+                "SELECT MAX(usage_pct) FROM disk_metrics WHERE host_id = $1 AND time > now() - INTERVAL '2 minutes'"
+            )
+            .bind(host_id)
+            .fetch_optional(db)
+            .await?
+            .flatten();
+
+            let Some(val) = value else {
+                return Ok((false, None));
+            };
+
+            let Some(thresh) = threshold else {
+                return Ok((false, Some(val)));
+            };
+
+            let met = match condition {
+                ">" => val > thresh,
+                "<" => val < thresh,
+                "==" => (val - thresh).abs() < f64::EPSILON,
+                _ => false,
+            };
+
+            Ok((met, Some(val)))
+        }
         _ => {
             // Numeric metrics from snapshots
             let column = match metric {
@@ -212,6 +238,12 @@ async fn check_condition(
                 "dns_rtt_ms" => "dns_rtt_ms",
                 "dns_loss_pct" => "dns_loss_pct",
                 "connection_count" => "connection_count",
+                "cpu_usage_pct" => "cpu_usage_pct",
+                "swap_used_bytes" => "swap_used_bytes",
+                "disk_read_bytes" => "disk_read_bytes",
+                "disk_write_bytes" => "disk_write_bytes",
+                "tcp_time_wait" => "tcp_time_wait",
+                "tcp_close_wait" => "tcp_close_wait",
                 _ => return Ok((false, None)),
             };
 

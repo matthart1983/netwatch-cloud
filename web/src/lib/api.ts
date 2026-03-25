@@ -82,6 +82,12 @@ export interface MetricPoint {
   load_avg_1m: number | null
   load_avg_5m: number | null
   load_avg_15m: number | null
+  swap_total_bytes: number | null
+  swap_used_bytes: number | null
+  disk_read_bytes: number | null
+  disk_write_bytes: number | null
+  tcp_time_wait: number | null
+  tcp_close_wait: number | null
 }
 
 export interface MetricsResponse {

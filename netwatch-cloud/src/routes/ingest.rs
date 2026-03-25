@@ -62,8 +62,8 @@ pub async fn ingest(
         // Insert snapshot
         let snapshot_id: i64 = sqlx::query_scalar(
             r#"
-            INSERT INTO snapshots (host_id, time, connection_count, gateway_ip, gateway_rtt_ms, gateway_loss_pct, dns_ip, dns_rtt_ms, dns_loss_pct, cpu_usage_pct, memory_total_bytes, memory_used_bytes, memory_available_bytes, load_avg_1m, load_avg_5m, load_avg_15m)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
+            INSERT INTO snapshots (host_id, time, connection_count, gateway_ip, gateway_rtt_ms, gateway_loss_pct, dns_ip, dns_rtt_ms, dns_loss_pct, cpu_usage_pct, memory_total_bytes, memory_used_bytes, memory_available_bytes, load_avg_1m, load_avg_5m, load_avg_15m, swap_total_bytes, swap_used_bytes, disk_read_bytes, disk_write_bytes, tcp_time_wait, tcp_close_wait)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22)
             RETURNING id
             "#,
         )
@@ -83,6 +83,12 @@ pub async fn ingest(
         .bind(snapshot.system.as_ref().and_then(|s| s.load_avg_1m))
         .bind(snapshot.system.as_ref().and_then(|s| s.load_avg_5m))
         .bind(snapshot.system.as_ref().and_then(|s| s.load_avg_15m))
+        .bind(snapshot.system.as_ref().and_then(|s| s.swap_total_bytes.map(|v| v as i64)))
+        .bind(snapshot.system.as_ref().and_then(|s| s.swap_used_bytes.map(|v| v as i64)))
+        .bind(snapshot.disk_io.as_ref().map(|d| d.read_bytes as i64))
+        .bind(snapshot.disk_io.as_ref().map(|d| d.write_bytes as i64))
+        .bind(snapshot.tcp_time_wait.map(|v| v as i32))
+        .bind(snapshot.tcp_close_wait.map(|v| v as i32))
         .fetch_one(&state.db)
         .await
         .map_err(|e| {
@@ -119,6 +125,33 @@ pub async fn ingest(
                 tracing::error!("failed to insert interface metric: {}", e);
                 StatusCode::INTERNAL_SERVER_ERROR
             })?;
+        }
+
+        // Insert disk metrics
+        if let Some(ref disks) = snapshot.disk_usage {
+            for disk in disks {
+                sqlx::query(
+                    r#"
+                    INSERT INTO disk_metrics (snapshot_id, host_id, time, mount_point, device, total_bytes, used_bytes, available_bytes, usage_pct)
+                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+                    "#,
+                )
+                .bind(snapshot_id)
+                .bind(host_id)
+                .bind(snapshot.timestamp)
+                .bind(&disk.mount_point)
+                .bind(&disk.device)
+                .bind(disk.total_bytes as i64)
+                .bind(disk.used_bytes as i64)
+                .bind(disk.available_bytes as i64)
+                .bind(disk.usage_pct)
+                .execute(&state.db)
+                .await
+                .map_err(|e| {
+                    tracing::error!("failed to insert disk metric: {}", e);
+                    StatusCode::INTERNAL_SERVER_ERROR
+                })?;
+            }
         }
 
         accepted += 1;

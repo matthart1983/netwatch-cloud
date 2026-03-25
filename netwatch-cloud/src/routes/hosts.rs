@@ -82,7 +82,7 @@ pub struct MetricsResponse {
     pub points: Vec<MetricPoint>,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, sqlx::FromRow)]
 pub struct MetricPoint {
     pub time: DateTime<Utc>,
     pub gateway_rtt_ms: Option<f64>,
@@ -96,6 +96,12 @@ pub struct MetricPoint {
     pub load_avg_1m: Option<f64>,
     pub load_avg_5m: Option<f64>,
     pub load_avg_15m: Option<f64>,
+    pub swap_total_bytes: Option<i64>,
+    pub swap_used_bytes: Option<i64>,
+    pub disk_read_bytes: Option<i64>,
+    pub disk_write_bytes: Option<i64>,
+    pub tcp_time_wait: Option<i32>,
+    pub tcp_close_wait: Option<i32>,
 }
 
 pub async fn get_metrics(
@@ -122,9 +128,9 @@ pub async fn get_metrics(
     let from = query.from.unwrap_or(now - chrono::Duration::hours(24));
     let to = query.to.unwrap_or(now);
 
-    let points = sqlx::query_as::<_, (DateTime<Utc>, Option<f64>, Option<f64>, Option<f64>, Option<f64>, Option<i32>, Option<f64>, Option<i64>, Option<i64>, Option<f64>, Option<f64>, Option<f64>)>(
+    let rows = sqlx::query(
         r#"
-        SELECT time, gateway_rtt_ms, gateway_loss_pct, dns_rtt_ms, dns_loss_pct, connection_count, cpu_usage_pct, memory_used_bytes, memory_available_bytes, load_avg_1m, load_avg_5m, load_avg_15m
+        SELECT time, gateway_rtt_ms, gateway_loss_pct, dns_rtt_ms, dns_loss_pct, connection_count, cpu_usage_pct, memory_used_bytes, memory_available_bytes, load_avg_1m, load_avg_5m, load_avg_15m, swap_total_bytes, swap_used_bytes, disk_read_bytes, disk_write_bytes, tcp_time_wait, tcp_close_wait
         FROM snapshots
         WHERE host_id = $1 AND time >= $2 AND time <= $3
         ORDER BY time ASC
@@ -137,10 +143,30 @@ pub async fn get_metrics(
     .await
     .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
-    let points: Vec<MetricPoint> = points
-        .into_iter()
-        .map(|(time, gateway_rtt_ms, gateway_loss_pct, dns_rtt_ms, dns_loss_pct, connection_count, cpu_usage_pct, memory_used_bytes, memory_available_bytes, load_avg_1m, load_avg_5m, load_avg_15m)| {
-            MetricPoint { time, gateway_rtt_ms, gateway_loss_pct, dns_rtt_ms, dns_loss_pct, connection_count, cpu_usage_pct, memory_used_bytes, memory_available_bytes, load_avg_1m, load_avg_5m, load_avg_15m }
+    let points: Vec<MetricPoint> = rows
+        .iter()
+        .map(|row| {
+            use sqlx::Row;
+            MetricPoint {
+                time: row.get("time"),
+                gateway_rtt_ms: row.get("gateway_rtt_ms"),
+                gateway_loss_pct: row.get("gateway_loss_pct"),
+                dns_rtt_ms: row.get("dns_rtt_ms"),
+                dns_loss_pct: row.get("dns_loss_pct"),
+                connection_count: row.get("connection_count"),
+                cpu_usage_pct: row.get("cpu_usage_pct"),
+                memory_used_bytes: row.get("memory_used_bytes"),
+                memory_available_bytes: row.get("memory_available_bytes"),
+                load_avg_1m: row.get("load_avg_1m"),
+                load_avg_5m: row.get("load_avg_5m"),
+                load_avg_15m: row.get("load_avg_15m"),
+                swap_total_bytes: row.get("swap_total_bytes"),
+                swap_used_bytes: row.get("swap_used_bytes"),
+                disk_read_bytes: row.get("disk_read_bytes"),
+                disk_write_bytes: row.get("disk_write_bytes"),
+                tcp_time_wait: row.get("tcp_time_wait"),
+                tcp_close_wait: row.get("tcp_close_wait"),
+            }
         })
         .collect();
 

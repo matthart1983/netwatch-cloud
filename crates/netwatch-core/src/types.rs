@@ -2,6 +2,8 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
+use crate::collectors::disk::{DiskIo, DiskUsage};
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct IngestRequest {
     pub agent_version: String,
@@ -28,6 +30,10 @@ pub struct Snapshot {
     pub health: Option<HealthMetric>,
     pub connection_count: Option<u32>,
     pub system: Option<SystemMetric>,
+    pub disk_usage: Option<Vec<DiskUsage>>,
+    pub disk_io: Option<DiskIo>,
+    pub tcp_time_wait: Option<u32>,
+    pub tcp_close_wait: Option<u32>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -65,6 +71,8 @@ pub struct SystemMetric {
     pub load_avg_1m: Option<f64>,
     pub load_avg_5m: Option<f64>,
     pub load_avg_15m: Option<f64>,
+    pub swap_total_bytes: Option<u64>,
+    pub swap_used_bytes: Option<u64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
