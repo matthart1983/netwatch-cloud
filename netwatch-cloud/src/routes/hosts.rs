@@ -257,3 +257,68 @@ pub async fn get_metrics(
         points,
     }))
 }
+
+#[derive(Serialize)]
+pub struct DiskMount {
+    pub mount_point: String,
+    pub device: String,
+    pub total_bytes: i64,
+    pub used_bytes: i64,
+    pub available_bytes: i64,
+    pub usage_pct: f64,
+    pub time: DateTime<Utc>,
+}
+
+pub async fn get_disks(
+    user: AuthUser,
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<Uuid>,
+) -> Result<Json<Vec<DiskMount>>, StatusCode> {
+    // Verify host belongs to user
+    let exists = sqlx::query_scalar::<_, bool>(
+        "SELECT EXISTS(SELECT 1 FROM hosts WHERE id = $1 AND account_id = $2)"
+    )
+    .bind(id)
+    .bind(user.account_id)
+    .fetch_one(&state.db)
+    .await
+    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    if !exists {
+        return Err(StatusCode::NOT_FOUND);
+    }
+
+    // Get the latest snapshot's disk metrics
+    let rows = sqlx::query(
+        r#"
+        SELECT mount_point, device, total_bytes, used_bytes, available_bytes, usage_pct, time
+        FROM disk_metrics
+        WHERE host_id = $1 AND time = (
+            SELECT MAX(time) FROM disk_metrics WHERE host_id = $1
+        )
+        ORDER BY mount_point
+        "#,
+    )
+    .bind(id)
+    .fetch_all(&state.db)
+    .await
+    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    let disks: Vec<DiskMount> = rows
+        .iter()
+        .map(|row| {
+            use sqlx::Row;
+            DiskMount {
+                mount_point: row.get("mount_point"),
+                device: row.get("device"),
+                total_bytes: row.get("total_bytes"),
+                used_bytes: row.get("used_bytes"),
+                available_bytes: row.get("available_bytes"),
+                usage_pct: row.get("usage_pct"),
+                time: row.get("time"),
+            }
+        })
+        .collect();
+
+    Ok(Json(disks))
+}
