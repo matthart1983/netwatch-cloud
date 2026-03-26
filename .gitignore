@@ -7,3 +7,4 @@ node_modules/
 .next/
 netwatch-cloud/.env
 .agent.env
+.git-hash

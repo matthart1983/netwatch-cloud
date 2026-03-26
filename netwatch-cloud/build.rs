@@ -1,8 +1,15 @@
 fn main() {
-    // Try in order: RAILWAY_GIT_COMMIT_SHA, GIT_HASH env var, git command
+    // Try in order: RAILWAY_GIT_COMMIT_SHA, GIT_HASH env, .git-hash file, git command
     let git_hash = std::env::var("RAILWAY_GIT_COMMIT_SHA")
         .map(|s| s[..7.min(s.len())].to_string())
         .or_else(|_| std::env::var("GIT_HASH"))
+        .or_else(|_| {
+            // .git-hash is written by the Dockerfile before cargo build
+            std::fs::read_to_string(
+                std::path::Path::new(&std::env::var("CARGO_MANIFEST_DIR").unwrap()).join(".git-hash"),
+            )
+            .map(|s| s.trim().to_string())
+        })
         .unwrap_or_else(|_| {
             std::process::Command::new("git")
                 .args(["rev-parse", "--short", "HEAD"])
