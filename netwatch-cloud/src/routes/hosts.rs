@@ -105,6 +105,7 @@ pub struct MetricPoint {
     pub tcp_close_wait: Option<i32>,
     pub net_rx_bytes: Option<i64>,
     pub net_tx_bytes: Option<i64>,
+    pub cpu_per_core: Option<Vec<f64>>,
 }
 
 pub async fn get_metrics(
@@ -133,7 +134,7 @@ pub async fn get_metrics(
 
     let rows = sqlx::query(
         r#"
-        SELECT time, gateway_rtt_ms, gateway_loss_pct, dns_rtt_ms, dns_loss_pct, connection_count, cpu_usage_pct, memory_used_bytes, memory_available_bytes, load_avg_1m, load_avg_5m, load_avg_15m, swap_total_bytes, swap_used_bytes, disk_read_bytes, disk_write_bytes, tcp_time_wait, tcp_close_wait
+        SELECT time, gateway_rtt_ms, gateway_loss_pct, dns_rtt_ms, dns_loss_pct, connection_count, cpu_usage_pct, memory_used_bytes, memory_available_bytes, load_avg_1m, load_avg_5m, load_avg_15m, swap_total_bytes, swap_used_bytes, disk_read_bytes, disk_write_bytes, tcp_time_wait, tcp_close_wait, cpu_per_core
         FROM snapshots
         WHERE host_id = $1 AND time >= $2 AND time <= $3
         ORDER BY time ASC
@@ -172,6 +173,7 @@ pub async fn get_metrics(
                 tcp_close_wait: row.get("tcp_close_wait"),
                 net_rx_bytes: None,
                 net_tx_bytes: None,
+                cpu_per_core: row.get("cpu_per_core"),
             }
         })
         .collect();

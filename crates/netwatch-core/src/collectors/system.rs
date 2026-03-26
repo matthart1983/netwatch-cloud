@@ -124,6 +124,50 @@ mod linux {
         Some((usage * 10.0).round() / 10.0)
     }
 
+    fn read_per_core_samples() -> Option<Vec<CpuSample>> {
+        let contents = fs::read_to_string("/proc/stat").ok()?;
+        let mut cores = Vec::new();
+        for line in contents.lines() {
+            if line.starts_with("cpu") && !line.starts_with("cpu ") {
+                let vals: Vec<u64> = line
+                    .split_whitespace()
+                    .skip(1)
+                    .filter_map(|v| v.parse().ok())
+                    .collect();
+                if vals.len() < 4 {
+                    continue;
+                }
+                let idle = vals[3];
+                let total: u64 = vals.iter().sum();
+                cores.push(CpuSample { idle, total });
+            }
+        }
+        if cores.is_empty() { None } else { Some(cores) }
+    }
+
+    pub fn measure_cpu_per_core() -> Option<Vec<f64>> {
+        let s1 = read_per_core_samples()?;
+        thread::sleep(Duration::from_millis(200));
+        let s2 = read_per_core_samples()?;
+
+        if s1.len() != s2.len() {
+            return None;
+        }
+
+        let usages: Vec<f64> = s1.iter().zip(s2.iter()).map(|(a, b)| {
+            let total_diff = b.total.saturating_sub(a.total);
+            let idle_diff = b.idle.saturating_sub(a.idle);
+            if total_diff == 0 {
+                0.0
+            } else {
+                let usage = (total_diff - idle_diff) as f64 / total_diff as f64 * 100.0;
+                (usage * 10.0).round() / 10.0
+            }
+        }).collect();
+
+        Some(usages)
+    }
+
     pub fn read_memory() -> Option<MemoryInfo> {
         let contents = fs::read_to_string("/proc/meminfo").ok()?;
         let mut total_kb = 0u64;
@@ -322,6 +366,10 @@ mod macos {
             used_bytes: used,
         })
     }
+
+    pub fn measure_cpu_per_core() -> Option<Vec<f64>> {
+        None
+    }
 }
 
 #[cfg(not(any(target_os = "linux", target_os = "macos")))]
@@ -334,6 +382,7 @@ mod fallback {
 
     pub fn detect_memory_total() -> Option<u64> { None }
     pub fn measure_cpu_usage() -> Option<f64> { None }
+    pub fn measure_cpu_per_core() -> Option<Vec<f64>> { None }
     pub fn read_memory() -> Option<MemoryInfo> { None }
     pub fn read_load_avg() -> Option<LoadAvg> { None }
     pub fn read_swap() -> Option<SwapInfo> { None }

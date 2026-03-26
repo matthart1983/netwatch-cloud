@@ -62,8 +62,8 @@ pub async fn ingest(
         // Insert snapshot
         let snapshot_id: i64 = sqlx::query_scalar(
             r#"
-            INSERT INTO snapshots (host_id, time, connection_count, gateway_ip, gateway_rtt_ms, gateway_loss_pct, dns_ip, dns_rtt_ms, dns_loss_pct, cpu_usage_pct, memory_total_bytes, memory_used_bytes, memory_available_bytes, load_avg_1m, load_avg_5m, load_avg_15m, swap_total_bytes, swap_used_bytes, disk_read_bytes, disk_write_bytes, tcp_time_wait, tcp_close_wait)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22)
+            INSERT INTO snapshots (host_id, time, connection_count, gateway_ip, gateway_rtt_ms, gateway_loss_pct, dns_ip, dns_rtt_ms, dns_loss_pct, cpu_usage_pct, memory_total_bytes, memory_used_bytes, memory_available_bytes, load_avg_1m, load_avg_5m, load_avg_15m, swap_total_bytes, swap_used_bytes, disk_read_bytes, disk_write_bytes, tcp_time_wait, tcp_close_wait, cpu_per_core)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23)
             RETURNING id
             "#,
         )
@@ -89,6 +89,7 @@ pub async fn ingest(
         .bind(snapshot.disk_io.as_ref().map(|d| d.write_bytes as i64))
         .bind(snapshot.tcp_time_wait.map(|v| v as i32))
         .bind(snapshot.tcp_close_wait.map(|v| v as i32))
+        .bind(snapshot.system.as_ref().and_then(|s| s.cpu_per_core.as_deref()))
         .fetch_one(&state.db)
         .await
         .map_err(|e| {

@@ -73,6 +73,7 @@ pub struct SystemMetric {
     pub load_avg_15m: Option<f64>,
     pub swap_total_bytes: Option<u64>,
     pub swap_used_bytes: Option<u64>,
+    pub cpu_per_core: Option<Vec<f64>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

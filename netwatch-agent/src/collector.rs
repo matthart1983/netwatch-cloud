@@ -60,6 +60,7 @@ impl MetricsCollector {
                 load_avg_15m: load.as_ref().map(|l| l.fifteen),
                 swap_total_bytes: swap.as_ref().map(|s| s.total_bytes),
                 swap_used_bytes: swap.as_ref().map(|s| s.used_bytes),
+                cpu_per_core: system::measure_cpu_per_core(),
             })
         };
 
