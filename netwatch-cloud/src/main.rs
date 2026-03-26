@@ -72,6 +72,7 @@ async fn main() -> Result<()> {
         .route("/api/v1/hosts/{id}", get(routes::hosts::get_host))
         .route("/api/v1/hosts/{id}/metrics", get(routes::hosts::get_metrics))
         .route("/api/v1/hosts/{id}/disks", get(routes::hosts::get_disks))
+        .route("/api/v1/hosts/{id}/interfaces", get(routes::hosts::get_interfaces))
         .route("/api/v1/account/api-keys", get(routes::api_keys::list_keys).post(routes::api_keys::create_key))
         .route("/api/v1/account/api-keys/{id}", axum::routing::delete(routes::api_keys::delete_key))
         .route("/api/v1/alerts/rules", get(routes::alerts::list_rules).post(routes::alerts::create_rule))

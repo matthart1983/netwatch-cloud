@@ -322,3 +322,84 @@ pub async fn get_disks(
 
     Ok(Json(disks))
 }
+
+#[derive(Serialize)]
+pub struct InterfaceStat {
+    pub name: String,
+    pub is_up: bool,
+    pub rx_bytes_total: i64,
+    pub tx_bytes_total: i64,
+    pub rx_bytes_delta: i64,
+    pub tx_bytes_delta: i64,
+    pub rx_packets: i64,
+    pub tx_packets: i64,
+    pub rx_errors: i64,
+    pub tx_errors: i64,
+    pub rx_drops: i64,
+    pub tx_drops: i64,
+    pub time: DateTime<Utc>,
+}
+
+pub async fn get_interfaces(
+    user: AuthUser,
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<Uuid>,
+    Query(query): Query<MetricsQuery>,
+) -> Result<Json<Vec<InterfaceStat>>, StatusCode> {
+    let exists = sqlx::query_scalar::<_, bool>(
+        "SELECT EXISTS(SELECT 1 FROM hosts WHERE id = $1 AND account_id = $2)"
+    )
+    .bind(id)
+    .bind(user.account_id)
+    .fetch_one(&state.db)
+    .await
+    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    if !exists {
+        return Err(StatusCode::NOT_FOUND);
+    }
+
+    let now = Utc::now();
+    let from = query.from.unwrap_or(now - chrono::Duration::hours(24));
+    let to = query.to.unwrap_or(now);
+
+    let rows = sqlx::query(
+        r#"
+        SELECT name, is_up, rx_bytes_total, tx_bytes_total, rx_bytes_delta, tx_bytes_delta,
+               rx_packets, tx_packets, rx_errors, tx_errors, rx_drops, tx_drops, time
+        FROM interface_metrics
+        WHERE host_id = $1 AND time >= $2 AND time <= $3
+        ORDER BY name, time ASC
+        "#,
+    )
+    .bind(id)
+    .bind(from)
+    .bind(to)
+    .fetch_all(&state.db)
+    .await
+    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    let interfaces: Vec<InterfaceStat> = rows
+        .iter()
+        .map(|row| {
+            use sqlx::Row;
+            InterfaceStat {
+                name: row.get("name"),
+                is_up: row.get("is_up"),
+                rx_bytes_total: row.get("rx_bytes_total"),
+                tx_bytes_total: row.get("tx_bytes_total"),
+                rx_bytes_delta: row.get("rx_bytes_delta"),
+                tx_bytes_delta: row.get("tx_bytes_delta"),
+                rx_packets: row.get("rx_packets"),
+                tx_packets: row.get("tx_packets"),
+                rx_errors: row.get("rx_errors"),
+                tx_errors: row.get("tx_errors"),
+                rx_drops: row.get("rx_drops"),
+                tx_drops: row.get("tx_drops"),
+                time: row.get("time"),
+            }
+        })
+        .collect();
+
+    Ok(Json(interfaces))
+}
