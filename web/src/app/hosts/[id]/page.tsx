@@ -433,7 +433,7 @@ export default function HostDetailPage() {
               </span>
             )}
             {lastSeenSecs != null && (
-              <span className="text-xs text-zinc-500">Last seen {lastSeenSecs}s ago</span>
+              <span className="text-xs text-zinc-500 tabular-nums min-w-[7rem] text-right">Last seen {lastSeenSecs}s ago</span>
             )}
             <button
               onClick={() => setPaused(p => !p)}
@@ -445,7 +445,7 @@ export default function HostDetailPage() {
             >
               {paused ? <><Pause size={12} /> Paused</> : <><Circle size={8} fill="currentColor" className="animate-pulse" /> Live</>}
             </button>
-            {lastFetch && <span className="text-xs text-zinc-600">{secondsAgo}s ago</span>}
+            {lastFetch && <span className="text-xs text-zinc-600 tabular-nums min-w-[3rem] text-right">{secondsAgo}s ago</span>}
           </div>
         </div>
       </div>
