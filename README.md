@@ -2,6 +2,8 @@
 
 Lightweight network monitoring for small Linux fleets. A companion cloud service for [NetWatch TUI](https://github.com/matthart1983/netwatch).
 
+**🚀 Live at [netwatch-web-production.up.railway.app](https://netwatch-web-production.up.railway.app)**
+
 ## Components
 
 - **netwatch-agent** — Lightweight Linux daemon that collects 5 core metrics (interface status, latency, packet loss, connection count, heartbeat) and sends them to the cloud API
