@@ -410,7 +410,7 @@ export default function HostDetailPage() {
   }
 
   return (
-    <div className="pb-8">
+    <div className="pb-8 dashboard-wide">
       {/* === Health Summary Header === */}
       <div className="sticky top-0 z-20 bg-zinc-950/95 backdrop-blur border-b border-zinc-800 -mx-4 px-4 py-3 mb-4">
         <div className="flex items-center justify-between flex-wrap gap-3">
