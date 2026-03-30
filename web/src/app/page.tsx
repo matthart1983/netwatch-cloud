@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { useAuth } from '@/lib/auth'
-import { getHosts, Host } from '@/lib/api'
+import { getHosts, getMetrics, Host, MetricPoint } from '@/lib/api'
 import {
   Activity, Radar, Bell, BarChart3, Monitor, RefreshCw,
   Shield, Lock, Eye, ChevronRight, Zap, X, Check
@@ -490,18 +490,93 @@ function MetricRow({ metric, source, interval }: { metric: string; source: strin
   )
 }
 
+interface HostMetrics {
+  cpu: number | null
+  memPct: number | null
+  disk: number | null
+  load1m: number | null
+  latency: number | null
+  loss: number | null
+  connections: number | null
+  cpuHistory: number[]
+}
+
+function timeAgo(iso: string): string {
+  const secs = Math.floor((Date.now() - new Date(iso).getTime()) / 1000)
+  if (secs < 60) return `${secs}s ago`
+  if (secs < 3600) return `${Math.floor(secs / 60)}m ago`
+  if (secs < 86400) return `${Math.floor(secs / 3600)}h ago`
+  return `${Math.floor(secs / 86400)}d ago`
+}
+
+function MiniSparkline({ data, color, height = 24 }: { data: number[]; color: string; height?: number }) {
+  if (data.length < 2) return null
+  const max = Math.max(...data, 1)
+  const min = Math.min(...data, 0)
+  const range = max - min || 1
+  const w = 80
+  const points = data.map((v, i) => {
+    const x = (i / (data.length - 1)) * w
+    const y = height - ((v - min) / range) * (height - 2) - 1
+    return `${x},${y}`
+  }).join(' ')
+  return (
+    <svg width={w} height={height} className="shrink-0">
+      <polyline points={points} fill="none" stroke={color} strokeWidth="1.5" strokeLinejoin="round" />
+    </svg>
+  )
+}
+
+function extractMetrics(points: MetricPoint[]): HostMetrics {
+  const latest = points.length > 0 ? points[points.length - 1] : null
+  const cpuHistory = points.slice(-20).map(p => p.cpu_usage_pct ?? 0)
+  const memTotal = latest && latest.memory_used_bytes != null && latest.memory_available_bytes != null
+    ? latest.memory_used_bytes + latest.memory_available_bytes : null
+  const memPct = memTotal && latest?.memory_used_bytes != null ? (latest.memory_used_bytes / memTotal) * 100 : null
+  return {
+    cpu: latest?.cpu_usage_pct ?? null,
+    memPct,
+    disk: latest?.disk_usage_pct ?? null,
+    load1m: latest?.load_avg_1m ?? null,
+    latency: latest?.gateway_rtt_ms ?? null,
+    loss: latest?.gateway_loss_pct ?? null,
+    connections: latest?.connection_count ?? null,
+    cpuHistory,
+  }
+}
+
+function metricColor(value: number | null, warn: number, crit: number): string {
+  if (value == null) return 'text-zinc-500'
+  if (value >= crit) return 'text-red-400'
+  if (value >= warn) return 'text-yellow-400'
+  return 'text-emerald-400'
+}
+
 export default function HostsPage() {
   const { token, isLoading: authLoading } = useAuth()
   const [hosts, setHosts] = useState<Host[]>([])
+  const [hostMetrics, setHostMetrics] = useState<Record<string, HostMetrics>>({})
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     if (authLoading || !token) return
 
-    async function fetch() {
+    async function fetchAll() {
       try {
         const data = await getHosts()
         setHosts(data)
+        // Fetch last hour of metrics for each host
+        const from = new Date(Date.now() - 3600 * 1000).toISOString()
+        const metricsMap: Record<string, HostMetrics> = {}
+        await Promise.all(data.map(async (host) => {
+          try {
+            const m = await getMetrics(host.id, from)
+            metricsMap[host.id] = extractMetrics(m.points)
+          } catch {
+            metricsMap[host.id] = { cpu: null, memPct: null, disk: null, load1m: null, latency: null, loss: null, connections: null, cpuHistory: [] }
+          }
+        }))
+        setHostMetrics(metricsMap)
       } catch {
         // handled by api client redirect
       } finally {
@@ -509,8 +584,8 @@ export default function HostsPage() {
       }
     }
 
-    fetch()
-    const interval = setInterval(fetch, 60_000)
+    fetchAll()
+    const interval = setInterval(fetchAll, 30_000)
     return () => clearInterval(interval)
   }, [token, authLoading])
 
@@ -521,7 +596,7 @@ export default function HostsPage() {
   }
 
   if (loading) {
-    return <div className="text-zinc-400 mt-10">Loading hosts...</div>
+    return <div className="text-zinc-400 mt-10">Loading fleet...</div>
   }
 
   if (hosts.length === 0) {
@@ -534,33 +609,124 @@ export default function HostsPage() {
     )
   }
 
+  const online = hosts.filter(h => h.is_online).length
+  const offline = hosts.length - online
+  const allMetrics = Object.values(hostMetrics)
+  const avgCpu = allMetrics.filter(m => m.cpu != null).reduce((s, m) => s + (m.cpu ?? 0), 0) / (allMetrics.filter(m => m.cpu != null).length || 1)
+  const avgMem = allMetrics.filter(m => m.memPct != null).reduce((s, m) => s + (m.memPct ?? 0), 0) / (allMetrics.filter(m => m.memPct != null).length || 1)
+  const maxDisk = Math.max(...allMetrics.map(m => m.disk ?? 0), 0)
+  const hasWarnings = allMetrics.some(m => (m.cpu ?? 0) > 80 || (m.memPct ?? 0) > 85 || (m.disk ?? 0) > 90)
+
   return (
     <div>
-      <h1 className="text-2xl font-bold mb-6">Hosts</h1>
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-        {hosts.map(host => (
-          <Link
-            key={host.id}
-            href={`/hosts/${host.id}`}
-            className="bg-zinc-900 border border-zinc-800 rounded-lg p-4 hover:border-zinc-600 transition-colors"
-          >
-            <div className="flex items-center gap-2 mb-2">
-              <span className={`w-2.5 h-2.5 rounded-full ${host.is_online ? 'bg-emerald-400' : 'bg-red-400'}`} />
-              <span className="font-semibold">{host.hostname}</span>
-            </div>
-            <div className="text-xs text-zinc-400 space-y-1">
-              {host.os && <div>{host.os}</div>}
-              <div>Last seen: {new Date(host.last_seen_at).toLocaleString()}</div>
-              {host.agent_version && <div>Agent v{host.agent_version}</div>}
-              {(host.cpu_cores || host.memory_total_bytes) && (
-                <div className="flex gap-2">
-                  {host.cpu_cores && <span>{host.cpu_cores} cores</span>}
-                  {host.memory_total_bytes && <span>{formatBytes(host.memory_total_bytes)} RAM</span>}
+      {/* Fleet Health Summary */}
+      <div className="flex items-center justify-between mb-6">
+        <div>
+          <h1 className="text-2xl font-bold">Fleet Overview</h1>
+          <p className="text-sm text-zinc-500 mt-1">{hosts.length} {hosts.length === 1 ? 'host' : 'hosts'} monitored</p>
+        </div>
+        <div className="flex items-center gap-3">
+          <span className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
+            <span className="w-2 h-2 rounded-full bg-emerald-400" /> {online} online
+          </span>
+          {offline > 0 && (
+            <span className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium bg-red-500/15 text-red-400 border border-red-500/30">
+              <span className="w-2 h-2 rounded-full bg-red-400" /> {offline} offline
+            </span>
+          )}
+          {hasWarnings && (
+            <span className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium bg-yellow-500/15 text-yellow-400 border border-yellow-500/30">
+              ⚠ warnings
+            </span>
+          )}
+        </div>
+      </div>
+
+      {/* Fleet Stats */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
+        <div className="bg-zinc-900 border border-zinc-800 rounded-lg p-3">
+          <div className="text-xs text-zinc-500 mb-1">Avg CPU</div>
+          <div className={`text-lg font-semibold tabular-nums ${metricColor(avgCpu, 80, 95)}`}>{avgCpu.toFixed(1)}%</div>
+        </div>
+        <div className="bg-zinc-900 border border-zinc-800 rounded-lg p-3">
+          <div className="text-xs text-zinc-500 mb-1">Avg Memory</div>
+          <div className={`text-lg font-semibold tabular-nums ${metricColor(avgMem, 85, 95)}`}>{avgMem.toFixed(1)}%</div>
+        </div>
+        <div className="bg-zinc-900 border border-zinc-800 rounded-lg p-3">
+          <div className="text-xs text-zinc-500 mb-1">Max Disk</div>
+          <div className={`text-lg font-semibold tabular-nums ${metricColor(maxDisk, 80, 90)}`}>{maxDisk.toFixed(1)}%</div>
+        </div>
+        <div className="bg-zinc-900 border border-zinc-800 rounded-lg p-3">
+          <div className="text-xs text-zinc-500 mb-1">Fleet Health</div>
+          <div className={`text-lg font-semibold ${offline > 0 ? 'text-red-400' : hasWarnings ? 'text-yellow-400' : 'text-emerald-400'}`}>
+            {offline > 0 ? 'Degraded' : hasWarnings ? 'Warning' : 'Healthy'}
+          </div>
+        </div>
+      </div>
+
+      {/* Host Cards */}
+      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+        {hosts.map(host => {
+          const m = hostMetrics[host.id] || { cpu: null, memPct: null, disk: null, load1m: null, latency: null, loss: null, connections: null, cpuHistory: [] }
+          return (
+            <Link
+              key={host.id}
+              href={`/hosts/${host.id}`}
+              className="bg-zinc-900 border border-zinc-800 rounded-lg p-4 hover:border-zinc-600 transition-colors group"
+            >
+              {/* Header */}
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center gap-2">
+                  <span className={`w-2.5 h-2.5 rounded-full ${host.is_online ? 'bg-emerald-400' : 'bg-red-400'}`} />
+                  <span className="font-semibold group-hover:text-emerald-400 transition-colors">{host.hostname}</span>
                 </div>
-              )}
-            </div>
-          </Link>
-        ))}
+                <div className="flex items-center gap-2">
+                  {m.cpuHistory.length > 1 && <MiniSparkline data={m.cpuHistory} color="#fbbf24" />}
+                  <ChevronRight size={14} className="text-zinc-600 group-hover:text-zinc-400 transition-colors" />
+                </div>
+              </div>
+
+              {/* Metrics Grid */}
+              <div className="grid grid-cols-4 gap-2 mb-3">
+                <div>
+                  <div className="text-[10px] text-zinc-600 uppercase tracking-wider">CPU</div>
+                  <div className={`text-sm font-medium tabular-nums ${metricColor(m.cpu, 80, 95)}`}>
+                    {m.cpu != null ? `${m.cpu.toFixed(0)}%` : '—'}
+                  </div>
+                </div>
+                <div>
+                  <div className="text-[10px] text-zinc-600 uppercase tracking-wider">MEM</div>
+                  <div className={`text-sm font-medium tabular-nums ${metricColor(m.memPct, 85, 95)}`}>
+                    {m.memPct != null ? `${m.memPct.toFixed(0)}%` : '—'}
+                  </div>
+                </div>
+                <div>
+                  <div className="text-[10px] text-zinc-600 uppercase tracking-wider">DISK</div>
+                  <div className={`text-sm font-medium tabular-nums ${metricColor(m.disk, 80, 90)}`}>
+                    {m.disk != null ? `${m.disk.toFixed(0)}%` : '—'}
+                  </div>
+                </div>
+                <div>
+                  <div className="text-[10px] text-zinc-600 uppercase tracking-wider">LOAD</div>
+                  <div className={`text-sm font-medium tabular-nums ${metricColor(m.load1m, host.cpu_cores ?? 999, (host.cpu_cores ?? 999) * 2)}`}>
+                    {m.load1m != null ? m.load1m.toFixed(2) : '—'}
+                  </div>
+                </div>
+              </div>
+
+              {/* Footer */}
+              <div className="flex items-center justify-between text-[11px] text-zinc-500">
+                <div className="flex items-center gap-3">
+                  {host.os && <span>{host.os}</span>}
+                  {host.cpu_cores && host.memory_total_bytes && (
+                    <span>{host.cpu_cores}c · {formatBytes(host.memory_total_bytes)}</span>
+                  )}
+                </div>
+                <span className="tabular-nums">{timeAgo(host.last_seen_at)}</span>
+              </div>
+            </Link>
+          )
+        })}
       </div>
     </div>
   )
