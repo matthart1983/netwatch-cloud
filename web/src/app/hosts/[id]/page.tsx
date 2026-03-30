@@ -344,7 +344,7 @@ export default function HostDetailPage() {
   }
 
   return (
-    <div className="pb-8 dashboard-wide">
+    <div className="pb-8" style={{ width: '100vw', marginLeft: 'calc(-50vw + 50%)', paddingLeft: '1.5rem', paddingRight: '1.5rem' }}>
       {/* === Health Summary Header === */}
       <div className="sticky top-0 z-20 bg-zinc-950/95 backdrop-blur border-b border-zinc-800 -mx-6 px-6 py-3 mb-4">
         <div className="flex items-center justify-between flex-wrap gap-3">
