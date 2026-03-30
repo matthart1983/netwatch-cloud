@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { useAuth } from '@/lib/auth'
 import { getHosts, getMetrics, Host, MetricPoint } from '@/lib/api'
+import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts'
 import {
   Activity, Radar, Bell, BarChart3, Monitor, RefreshCw,
   Shield, Lock, Eye, ChevronRight, Zap, X, Check
@@ -556,6 +557,7 @@ export default function HostsPage() {
   const { token, isLoading: authLoading } = useAuth()
   const [hosts, setHosts] = useState<Host[]>([])
   const [hostMetrics, setHostMetrics] = useState<Record<string, HostMetrics>>({})
+  const [hostPoints, setHostPoints] = useState<Record<string, MetricPoint[]>>({})
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
@@ -568,15 +570,19 @@ export default function HostsPage() {
         // Fetch last hour of metrics for each host
         const from = new Date(Date.now() - 3600 * 1000).toISOString()
         const metricsMap: Record<string, HostMetrics> = {}
+        const pointsMap: Record<string, MetricPoint[]> = {}
         await Promise.all(data.map(async (host) => {
           try {
             const m = await getMetrics(host.id, from)
             metricsMap[host.id] = extractMetrics(m.points)
+            pointsMap[host.id] = m.points
           } catch {
             metricsMap[host.id] = { cpu: null, memPct: null, disk: null, load1m: null, latency: null, loss: null, connections: null, cpuHistory: [] }
+            pointsMap[host.id] = []
           }
         }))
         setHostMetrics(metricsMap)
+        setHostPoints(pointsMap)
       } catch {
         // handled by api client redirect
       } finally {
@@ -727,6 +733,104 @@ export default function HostsPage() {
             </Link>
           )
         })}
+      </div>
+
+      {/* Fleet Overlay Charts */}
+      {hosts.length > 0 && Object.keys(hostPoints).length > 0 && (
+        <FleetCharts hosts={hosts} hostPoints={hostPoints} />
+      )}
+    </div>
+  )
+}
+
+const HOST_COLORS = ['#34d399', '#60a5fa', '#fbbf24', '#f87171', '#a78bfa', '#f472b6', '#fb923c', '#2dd4bf']
+const TOOLTIP_STYLE = { background: '#1a1a1a', border: '1px solid #333', fontSize: 12 }
+
+interface FleetChartConfig {
+  title: string
+  extract: (p: MetricPoint) => number | null
+  unit: string
+  yDomain?: [number | string, number | string]
+}
+
+const FLEET_CHARTS: FleetChartConfig[] = [
+  { title: 'CPU Usage', extract: p => p.cpu_usage_pct, unit: '%', yDomain: [0, 100] },
+  { title: 'Memory Usage', extract: p => {
+    if (p.memory_used_bytes == null || p.memory_available_bytes == null) return null
+    const total = p.memory_used_bytes + p.memory_available_bytes
+    return total > 0 ? (p.memory_used_bytes / total) * 100 : null
+  }, unit: '%', yDomain: [0, 100] },
+  { title: 'Network RX (KB)', extract: p => p.net_rx_bytes != null ? p.net_rx_bytes / 1024 : null, unit: 'KB' },
+  { title: 'Network TX (KB)', extract: p => p.net_tx_bytes != null ? p.net_tx_bytes / 1024 : null, unit: 'KB' },
+  { title: 'Gateway Latency', extract: p => p.gateway_rtt_ms, unit: 'ms' },
+  { title: 'Load Average (1m)', extract: p => p.load_avg_1m, unit: '' },
+]
+
+function FleetCharts({ hosts, hostPoints }: { hosts: Host[]; hostPoints: Record<string, MetricPoint[]> }) {
+  // For each chart, build data with one key per host
+  const charts = FLEET_CHARTS.map((cfg, chartIdx) => {
+    const timeMap = new Map<string, Record<string, unknown>>()
+
+    hosts.forEach((host, hostIdx) => {
+      const points = hostPoints[host.id] || []
+      for (const p of points) {
+        const t = new Date(p.time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+        if (!timeMap.has(t)) timeMap.set(t, { time: t } as Record<string, unknown>)
+        const val = cfg.extract(p)
+        if (val != null) {
+          timeMap.get(t)![`h${hostIdx}`] = Math.round(val * 100) / 100
+        }
+      }
+    })
+
+    const data = Array.from(timeMap.values()).sort((a, b) =>
+      String(a.time).localeCompare(String(b.time))
+    )
+
+    if (data.length === 0) return null
+
+    return (
+      <div key={cfg.title} className="bg-zinc-900 border border-zinc-800 rounded-lg p-4" style={{ height: 240 }}>
+        <h3 className="text-sm font-medium text-zinc-300 mb-2">{cfg.title}</h3>
+        <ResponsiveContainer width="100%" height="85%" minWidth={0} minHeight={140}>
+          <LineChart data={data}>
+            <CartesianGrid strokeDasharray="3 3" stroke="#333" />
+            <XAxis dataKey="time" stroke="#666" tick={{ fontSize: 10 }} interval="preserveStartEnd" />
+            <YAxis stroke="#666" tick={{ fontSize: 10 }} domain={cfg.yDomain} />
+            <Tooltip contentStyle={TOOLTIP_STYLE} />
+            {hosts.map((host, i) => (
+              <Line
+                key={host.id}
+                dataKey={`h${i}`}
+                stroke={HOST_COLORS[i % HOST_COLORS.length]}
+                dot={false}
+                connectNulls
+                strokeWidth={1.5}
+                name={host.hostname}
+              />
+            ))}
+          </LineChart>
+        </ResponsiveContainer>
+      </div>
+    )
+  })
+
+  const validCharts = charts.filter(Boolean)
+  if (validCharts.length === 0) return null
+
+  return (
+    <div className="mt-8">
+      <h2 className="text-lg font-bold mb-4">Fleet Metrics</h2>
+      <div className="flex items-center gap-3 mb-4 flex-wrap">
+        {hosts.map((host, i) => (
+          <span key={host.id} className="flex items-center gap-1.5 text-xs text-zinc-400">
+            <span className="w-3 h-0.5 rounded" style={{ background: HOST_COLORS[i % HOST_COLORS.length] }} />
+            {host.hostname}
+          </span>
+        ))}
+      </div>
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+        {validCharts}
       </div>
     </div>
   )
