@@ -27,19 +27,24 @@ const TOOLTIP_STYLE = { background: '#1a1a1a', border: '1px solid #333', fontSiz
 const PANEL_IDS = ['latency-loss', 'network-conn', 'cpu-memory', 'cpu-per-core', 'load-swap', 'disk-util', 'tcp-states'] as const
 type PanelId = typeof PANEL_IDS[number]
 
-const LS_KEY = 'host-dashboard-state-v3'
+const LS_KEY = 'host-dashboard-state-v4'
 
-function loadCollapsed(): Record<string, boolean> {
-  if (typeof window === 'undefined') return {}
+interface DashState { collapsed: Record<string, boolean>; order: string[] }
+
+function loadDashState(): DashState {
+  if (typeof window === 'undefined') return { collapsed: {}, order: [] }
   try {
     const raw = localStorage.getItem(LS_KEY)
-    if (raw) return JSON.parse(raw).collapsed || {}
+    if (raw) {
+      const parsed = JSON.parse(raw)
+      return { collapsed: parsed.collapsed || {}, order: parsed.order || [] }
+    }
   } catch {}
-  return {}
+  return { collapsed: {}, order: [] }
 }
 
-function saveCollapsed(collapsed: Record<string, boolean>) {
-  try { localStorage.setItem(LS_KEY, JSON.stringify({ collapsed })) } catch {}
+function saveDashState(state: DashState) {
+  try { localStorage.setItem(LS_KEY, JSON.stringify(state)) } catch {}
 }
 
 // ─── Panel Config ────────────────────────────────────────────
@@ -225,24 +230,76 @@ export default function HostDetailPage() {
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   // Panel state
-  const [collapsed, setCollapsed] = useState<Record<string, boolean>>(() => loadCollapsed())
+  const [dashState, setDashState] = useState<DashState>(() => loadDashState())
+  const collapsed = dashState.collapsed
   const [locked, setLocked] = useState(false)
   const [maximizedPanel, setMaximizedPanel] = useState<PanelId | null>(null)
+  const [dragOver, setDragOver] = useState<string | null>(null)
+  const dragItem = useRef<string | null>(null)
 
-  const toggleCollapse = useCallback((panelId: string) => {
-    setCollapsed(prev => {
-      const next = { ...prev, [panelId]: !prev[panelId] }
-      saveCollapsed(next)
+  const panelOrder = useMemo(() => {
+    const defaultOrder = PANEL_CONFIGS.map(c => c.id)
+    if (dashState.order.length === 0) return defaultOrder
+    // Merge: use saved order but include any new panels
+    const ordered = dashState.order.filter(id => defaultOrder.includes(id as typeof defaultOrder[number]))
+    for (const id of defaultOrder) {
+      if (!ordered.includes(id)) ordered.push(id)
+    }
+    return ordered
+  }, [dashState.order])
+
+  const updateDashState = useCallback((updater: (prev: DashState) => DashState) => {
+    setDashState(prev => {
+      const next = updater(prev)
+      saveDashState(next)
       return next
     })
   }, [])
 
+  const toggleCollapse = useCallback((panelId: string) => {
+    updateDashState(prev => ({
+      ...prev,
+      collapsed: { ...prev.collapsed, [panelId]: !prev.collapsed[panelId] },
+    }))
+  }, [updateDashState])
+
   const toggleLock = useCallback(() => setLocked(prev => !prev), [])
 
   const resetLayout = useCallback(() => {
-    setCollapsed({})
     setLocked(false)
-    saveCollapsed({})
+    updateDashState(() => ({ collapsed: {}, order: [] }))
+  }, [updateDashState])
+
+  const handleDragStart = useCallback((id: string) => {
+    dragItem.current = id
+  }, [])
+
+  const handleDragOver = useCallback((e: React.DragEvent, id: string) => {
+    e.preventDefault()
+    if (dragItem.current && dragItem.current !== id) {
+      setDragOver(id)
+    }
+  }, [])
+
+  const handleDrop = useCallback((id: string) => {
+    const from = dragItem.current
+    if (!from || from === id) { setDragOver(null); return }
+    updateDashState(prev => {
+      const order = [...(prev.order.length > 0 ? prev.order : PANEL_CONFIGS.map(c => c.id))]
+      const fromIdx = order.indexOf(from)
+      const toIdx = order.indexOf(id)
+      if (fromIdx === -1 || toIdx === -1) return prev
+      order.splice(fromIdx, 1)
+      order.splice(toIdx, 0, from)
+      return { ...prev, order }
+    })
+    dragItem.current = null
+    setDragOver(null)
+  }, [updateDashState])
+
+  const handleDragEnd = useCallback(() => {
+    dragItem.current = null
+    setDragOver(null)
   }, [])
 
   // Data fetching
@@ -478,18 +535,32 @@ export default function HostDetailPage() {
         <p className="text-zinc-400">No data for this time range.</p>
       ) : (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-          {PANEL_CONFIGS.map(config => (
-            <div key={config.id} style={{ height: collapsed[config.id] ? 'auto' : 280 }}>
-              <ChartPanel
-                config={config}
-                data={chartData}
-                isCollapsed={!!collapsed[config.id]}
-                isLocked={locked}
-                onToggleCollapse={() => toggleCollapse(config.id)}
-                onMaximize={() => setMaximizedPanel(config.id)}
-              />
-            </div>
-          ))}
+          {panelOrder.map(panelId => {
+            const config = PANEL_CONFIGS.find(c => c.id === panelId)
+            if (!config) return null
+            const isWide = config.id === 'cpu-per-core'
+            return (
+              <div
+                key={config.id}
+                className={`${isWide ? 'lg:col-span-2' : ''} ${dragOver === config.id ? 'ring-2 ring-emerald-500/50 rounded-lg' : ''}`}
+                style={{ height: collapsed[config.id] ? 'auto' : isWide ? 360 : 280 }}
+                draggable={!locked}
+                onDragStart={() => handleDragStart(config.id)}
+                onDragOver={(e) => handleDragOver(e, config.id)}
+                onDrop={() => handleDrop(config.id)}
+                onDragEnd={handleDragEnd}
+              >
+                <ChartPanel
+                  config={config}
+                  data={chartData}
+                  isCollapsed={!!collapsed[config.id]}
+                  isLocked={locked}
+                  onToggleCollapse={() => toggleCollapse(config.id)}
+                  onMaximize={() => setMaximizedPanel(config.id)}
+                />
+              </div>
+            )
+          })}
         </div>
       )}
 
@@ -557,19 +628,18 @@ function ChartPanel({ config, data, isCollapsed, isLocked, onToggleCollapse, onM
   onMaximize: () => void
 }) {
   const primaryStat = config.statKeys[0] ? computeStats(data, config.statKeys[0].key) : null
-  const lines = config.id === 'cpu-per-core' ? getCoreLines(data) : config.lines
+  const isPerCore = config.id === 'cpu-per-core'
+  const lines = isPerCore ? getCoreLines(data) : config.lines
 
   // Hide per-core panel if no core data
-  if (config.id === 'cpu-per-core' && lines.length === 0) return null
+  if (isPerCore && lines.length === 0) return null
 
   return (
     <div className="bg-zinc-900 border border-zinc-800 rounded-lg h-full flex flex-col overflow-hidden">
       {/* Panel header */}
       <div className="flex items-center gap-2 px-3 py-2 border-b border-zinc-800/50 shrink-0">
         {!isLocked && (
-          <div className="panel-drag-handle cursor-grab active:cursor-grabbing text-zinc-600 hover:text-zinc-400 shrink-0">
-            <GripVertical size={14} />
-          </div>
+          <GripVertical size={14} className="text-zinc-600 hover:text-zinc-400 cursor-grab active:cursor-grabbing shrink-0" />
         )}
         <h3 className="text-sm font-medium text-zinc-300 truncate">{config.title}</h3>
         {primaryStat && !isCollapsed && (
@@ -598,8 +668,11 @@ function ChartPanel({ config, data, isCollapsed, isLocked, onToggleCollapse, onM
               <XAxis dataKey="time" stroke="#666" tick={{ fontSize: 11 }} interval="preserveStartEnd" />
               <YAxis stroke="#666" tick={{ fontSize: 11 }} domain={config.yDomain} />
               <Tooltip contentStyle={TOOLTIP_STYLE} />
+              {isPerCore && (
+                <Line dataKey="cpu" stroke="#ffffff" dot={false} connectNulls strokeWidth={2.5} strokeDasharray="6 3" name="Total CPU %" />
+              )}
               {lines.map(line => (
-                <Line key={line.dataKey} dataKey={line.dataKey} stroke={line.stroke} dot={false} connectNulls strokeWidth={1.5} name={line.name} />
+                <Line key={line.dataKey} dataKey={line.dataKey} stroke={line.stroke} dot={false} connectNulls strokeWidth={1} name={line.name} />
               ))}
             </LineChart>
           </ResponsiveContainer>

@@ -182,12 +182,13 @@ User=$SERVICE_USER
 Group=$SERVICE_USER
 EnvironmentFile=-$CONFIG_DIR/env
 
-NoNewPrivileges=yes
+NoNewPrivileges=no
 ProtectSystem=strict
 ProtectHome=yes
 ReadWritePaths=$DATA_DIR
 ReadOnlyPaths=$CONFIG_DIR /proc /sys
 PrivateTmp=yes
+AmbientCapabilities=CAP_NET_RAW
 
 [Install]
 WantedBy=multi-user.target

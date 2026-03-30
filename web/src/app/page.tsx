@@ -751,24 +751,38 @@ interface FleetChartConfig {
   extract: (p: MetricPoint) => number | null
   unit: string
   yDomain?: [number | string, number | string]
+  // Multi-series: multiple lines per host (e.g., RX + TX)
+  multiExtract?: { suffix: string; extract: (p: MetricPoint) => number | null; dashed?: boolean }[]
 }
 
 const FLEET_CHARTS: FleetChartConfig[] = [
-  { title: 'CPU Usage', extract: p => p.cpu_usage_pct, unit: '%', yDomain: [0, 100] },
-  { title: 'Memory Usage', extract: p => {
+  // Matches: Latency & Loss
+  { title: 'Gateway Latency (ms)', extract: p => p.gateway_rtt_ms, unit: 'ms' },
+  { title: 'Packet Loss (%)', extract: p => p.gateway_loss_pct, unit: '%', yDomain: [0, 'auto'] },
+  // Matches: Network & Connections
+  { title: 'Network I/O (KB)', extract: () => null, unit: 'KB', multiExtract: [
+    { suffix: 'RX', extract: p => p.net_rx_bytes != null ? p.net_rx_bytes / 1024 : null },
+    { suffix: 'TX', extract: p => p.net_tx_bytes != null ? p.net_tx_bytes / 1024 : null, dashed: true },
+  ]},
+  // Matches: CPU & Memory
+  { title: 'CPU Usage (%)', extract: p => p.cpu_usage_pct, unit: '%', yDomain: [0, 100] },
+  { title: 'Memory Usage (%)', extract: p => {
     if (p.memory_used_bytes == null || p.memory_available_bytes == null) return null
     const total = p.memory_used_bytes + p.memory_available_bytes
     return total > 0 ? (p.memory_used_bytes / total) * 100 : null
   }, unit: '%', yDomain: [0, 100] },
-  { title: 'Network RX (KB)', extract: p => p.net_rx_bytes != null ? p.net_rx_bytes / 1024 : null, unit: 'KB' },
-  { title: 'Network TX (KB)', extract: p => p.net_tx_bytes != null ? p.net_tx_bytes / 1024 : null, unit: 'KB' },
-  { title: 'Gateway Latency', extract: p => p.gateway_rtt_ms, unit: 'ms' },
+  // Matches: Load & Swap
   { title: 'Load Average (1m)', extract: p => p.load_avg_1m, unit: '' },
+  { title: 'Swap Used (MB)', extract: p => p.swap_used_bytes != null ? p.swap_used_bytes / (1024 * 1024) : null, unit: 'MB' },
+  // Matches: Disk Utilisation
+  { title: 'Disk Usage (%)', extract: p => p.disk_usage_pct, unit: '%', yDomain: [0, 100] },
+  // Matches: TCP Connection States
+  { title: 'Connections', extract: p => p.connection_count, unit: '' },
 ]
 
 function FleetCharts({ hosts, hostPoints }: { hosts: Host[]; hostPoints: Record<string, MetricPoint[]> }) {
-  // For each chart, build data with one key per host
-  const charts = FLEET_CHARTS.map((cfg, chartIdx) => {
+  const charts = FLEET_CHARTS.map((cfg) => {
+    const isMulti = !!cfg.multiExtract
     const timeMap = new Map<string, Record<string, unknown>>()
 
     hosts.forEach((host, hostIdx) => {
@@ -776,9 +790,15 @@ function FleetCharts({ hosts, hostPoints }: { hosts: Host[]; hostPoints: Record<
       for (const p of points) {
         const t = new Date(p.time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
         if (!timeMap.has(t)) timeMap.set(t, { time: t } as Record<string, unknown>)
-        const val = cfg.extract(p)
-        if (val != null) {
-          timeMap.get(t)![`h${hostIdx}`] = Math.round(val * 100) / 100
+        const row = timeMap.get(t)!
+        if (isMulti) {
+          for (const series of cfg.multiExtract!) {
+            const val = series.extract(p)
+            if (val != null) row[`h${hostIdx}_${series.suffix}`] = Math.round(val * 100) / 100
+          }
+        } else {
+          const val = cfg.extract(p)
+          if (val != null) row[`h${hostIdx}`] = Math.round(val * 100) / 100
         }
       }
     })
@@ -789,6 +809,25 @@ function FleetCharts({ hosts, hostPoints }: { hosts: Host[]; hostPoints: Record<
 
     if (data.length === 0) return null
 
+    // Build lines
+    const lines: { key: string; stroke: string; name: string; dashed?: boolean }[] = []
+    if (isMulti) {
+      hosts.forEach((host, i) => {
+        for (const series of cfg.multiExtract!) {
+          lines.push({
+            key: `h${i}_${series.suffix}`,
+            stroke: HOST_COLORS[i % HOST_COLORS.length],
+            name: `${host.hostname} ${series.suffix}`,
+            dashed: series.dashed,
+          })
+        }
+      })
+    } else {
+      hosts.forEach((host, i) => {
+        lines.push({ key: `h${i}`, stroke: HOST_COLORS[i % HOST_COLORS.length], name: host.hostname })
+      })
+    }
+
     return (
       <div key={cfg.title} className="bg-zinc-900 border border-zinc-800 rounded-lg p-4" style={{ height: 240 }}>
         <h3 className="text-sm font-medium text-zinc-300 mb-2">{cfg.title}</h3>
@@ -798,15 +837,16 @@ function FleetCharts({ hosts, hostPoints }: { hosts: Host[]; hostPoints: Record<
             <XAxis dataKey="time" stroke="#666" tick={{ fontSize: 10 }} interval="preserveStartEnd" />
             <YAxis stroke="#666" tick={{ fontSize: 10 }} domain={cfg.yDomain} />
             <Tooltip contentStyle={TOOLTIP_STYLE} />
-            {hosts.map((host, i) => (
+            {lines.map(line => (
               <Line
-                key={host.id}
-                dataKey={`h${i}`}
-                stroke={HOST_COLORS[i % HOST_COLORS.length]}
+                key={line.key}
+                dataKey={line.key}
+                stroke={line.stroke}
                 dot={false}
                 connectNulls
                 strokeWidth={1.5}
-                name={host.hostname}
+                strokeDasharray={line.dashed ? '5 3' : undefined}
+                name={line.name}
               />
             ))}
           </LineChart>
