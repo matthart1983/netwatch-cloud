@@ -5,13 +5,10 @@ import { useParams, useRouter } from 'next/navigation'
 import { useAuth } from '@/lib/auth'
 import { getHost, getMetrics, Host, MetricPoint } from '@/lib/api'
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts'
-import { Responsive as ResponsiveGridLayout, useContainerWidth } from 'react-grid-layout'
-import type { Layout, ResponsiveLayouts } from 'react-grid-layout'
-import 'react-grid-layout/css/styles.css'
-import 'react-resizable/css/styles.css'
+
 import {
   ChevronDown, ChevronRight, ChevronUp, Pause, Circle,
-  GripVertical, Maximize2, Minimize2, Lock, Unlock, RotateCcw,
+  GripVertical, Maximize2, Minimize2,
 } from 'lucide-react'
 
 // ─── Constants ───────────────────────────────────────────────
@@ -30,53 +27,19 @@ const TOOLTIP_STYLE = { background: '#1a1a1a', border: '1px solid #333', fontSiz
 const PANEL_IDS = ['latency-loss', 'network-conn', 'cpu-memory', 'load-swap', 'disk-util', 'tcp-states'] as const
 type PanelId = typeof PANEL_IDS[number]
 
-const BREAKPOINTS = { lg: 1024, md: 768, sm: 480, xs: 0 }
-const COLS = { lg: 12, md: 12, sm: 6, xs: 6 }
+const LS_KEY = 'host-dashboard-state-v3'
 
-function makeDefaultLayout(cols: number): Layout {
-  const w = cols >= 12 ? 6 : cols
-  return PANEL_IDS.map((id, i) => ({
-    i: id,
-    x: cols >= 12 ? (i % 2) * 6 : 0,
-    y: cols >= 12 ? Math.floor(i / 2) * 2 : i * 2,
-    w,
-    h: 2,
-    minW: cols >= 12 ? 4 : cols,
-    minH: 2,
-  }))
-}
-
-const DEFAULT_LAYOUTS: ResponsiveLayouts = {
-  lg: makeDefaultLayout(12),
-  md: makeDefaultLayout(12),
-  sm: makeDefaultLayout(6),
-  xs: makeDefaultLayout(6),
-}
-
-const LS_KEY = 'host-dashboard-layout-v2'
-
-interface PersistedState {
-  layouts: ResponsiveLayouts
-  collapsed: Record<string, boolean>
-  locked: boolean
-}
-
-function loadPersistedState(): PersistedState | null {
-  if (typeof window === 'undefined') return null
+function loadCollapsed(): Record<string, boolean> {
+  if (typeof window === 'undefined') return {}
   try {
     const raw = localStorage.getItem(LS_KEY)
-    if (raw) {
-      const parsed = JSON.parse(raw)
-      if (parsed.layouts) return parsed
-    }
+    if (raw) return JSON.parse(raw).collapsed || {}
   } catch {}
-  // migrate from Phase 1
-  try { localStorage.removeItem('host-dashboard-sections') } catch {}
-  return null
+  return {}
 }
 
-function savePersistedState(state: PersistedState) {
-  try { localStorage.setItem(LS_KEY, JSON.stringify(state)) } catch {}
+function saveCollapsed(collapsed: Record<string, boolean>) {
+  try { localStorage.setItem(LS_KEY, JSON.stringify({ collapsed })) } catch {}
 }
 
 // ─── Panel Config ────────────────────────────────────────────
@@ -254,46 +217,17 @@ export default function HostDetailPage() {
   const [hostInfoOpen, setHostInfoOpen] = useState(false)
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
-  // Grid layout state
-  const persisted = useRef(loadPersistedState())
-  const [layouts, setLayouts] = useState<ResponsiveLayouts>(persisted.current?.layouts ?? DEFAULT_LAYOUTS)
-  const [collapsed, setCollapsed] = useState<Record<string, boolean>>(persisted.current?.collapsed ?? {})
-  const [locked, setLocked] = useState(persisted.current?.locked ?? false)
+  // Panel state
+  const [collapsed, setCollapsed] = useState<Record<string, boolean>>(() => loadCollapsed())
+  const [locked, setLocked] = useState(false)
   const [maximizedPanel, setMaximizedPanel] = useState<PanelId | null>(null)
-  const { width: containerWidth, containerRef, mounted: containerMounted } = useContainerWidth()
-
-  // Persist layout changes
-  const persistState = useCallback((l: ResponsiveLayouts, c: Record<string, boolean>, lk: boolean) => {
-    savePersistedState({ layouts: l, collapsed: c, locked: lk })
-  }, [])
-
-  const handleLayoutChange = useCallback((_layout: Layout, allLayouts: ResponsiveLayouts) => {
-    setLayouts(allLayouts)
-    persistState(allLayouts, collapsed, locked)
-  }, [collapsed, locked, persistState])
 
   const toggleCollapse = useCallback((panelId: string) => {
     setCollapsed(prev => {
       const next = { ...prev, [panelId]: !prev[panelId] }
-      persistState(layouts, next, locked)
+      saveCollapsed(next)
       return next
     })
-  }, [layouts, locked, persistState])
-
-  const toggleLock = useCallback(() => {
-    setLocked(prev => {
-      const next = !prev
-      persistState(layouts, collapsed, next)
-      return next
-    })
-  }, [layouts, collapsed, persistState])
-
-  const resetLayout = useCallback(() => {
-    if (!confirm('Reset dashboard layout to defaults?')) return
-    setLayouts(DEFAULT_LAYOUTS)
-    setCollapsed({})
-    setLocked(false)
-    try { localStorage.removeItem(LS_KEY) } catch {}
   }, [])
 
   // Data fetching
@@ -412,7 +346,7 @@ export default function HostDetailPage() {
   return (
     <div className="pb-8 dashboard-wide">
       {/* === Health Summary Header === */}
-      <div className="sticky top-0 z-20 bg-zinc-950/95 backdrop-blur border-b border-zinc-800 -mx-4 px-4 py-3 mb-4">
+      <div className="sticky top-0 z-20 bg-zinc-950/95 backdrop-blur border-b border-zinc-800 -mx-6 px-6 py-3 mb-4">
         <div className="flex items-center justify-between flex-wrap gap-3">
           <div className="flex items-center gap-3">
             <button onClick={() => router.push('/')} className="text-zinc-400 hover:text-zinc-100 text-lg">←</button>
@@ -488,74 +422,36 @@ export default function HostDetailPage() {
         <LiveStatCard label="Connections" value={connStats.current != null ? connStats.current.toFixed(0) : '—'} delta={getDeltaInfo(connStats.current, connStats.avg)} valueColor="text-zinc-100" />
       </div>
 
-      {/* === Time Range + Dashboard Toolbar === */}
-      <div className="flex items-center justify-between mb-4">
-        <div className="flex gap-2">
-          {RANGES.map(r => (
-            <button
-              key={r.value}
-              onClick={() => { setRange(r.value); setLoading(true) }}
-              className={`px-3 py-1 rounded text-sm ${range === r.value ? 'bg-emerald-600 text-white' : 'bg-zinc-800 text-zinc-400 hover:text-zinc-100'}`}
-            >
-              {r.label}
-            </button>
-          ))}
-        </div>
-        <div className="flex items-center gap-2">
+      {/* === Time Range === */}
+      <div className="flex gap-2 mb-4">
+        {RANGES.map(r => (
           <button
-            onClick={toggleLock}
-            className={`flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-medium transition-colors ${
-              locked ? 'bg-yellow-500/15 text-yellow-400 border border-yellow-500/30' : 'bg-zinc-800 text-zinc-400 hover:text-zinc-100 border border-zinc-700'
-            }`}
-            title={locked ? 'Unlock layout' : 'Lock layout'}
+            key={r.value}
+            onClick={() => { setRange(r.value); setLoading(true) }}
+            className={`px-3 py-1 rounded text-sm ${range === r.value ? 'bg-emerald-600 text-white' : 'bg-zinc-800 text-zinc-400 hover:text-zinc-100'}`}
           >
-            {locked ? <Lock size={12} /> : <Unlock size={12} />}
-            {locked ? 'Locked' : 'Unlocked'}
+            {r.label}
           </button>
-          <button
-            onClick={resetLayout}
-            className="flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-medium bg-zinc-800 text-zinc-400 hover:text-zinc-100 border border-zinc-700 transition-colors"
-            title="Reset layout"
-          >
-            <RotateCcw size={12} />
-            Reset
-          </button>
-        </div>
+        ))}
       </div>
 
       {/* === Chart Grid === */}
       {chartData.length === 0 ? (
         <p className="text-zinc-400">No data for this time range.</p>
       ) : (
-        <div ref={containerRef}>
-          {containerMounted && (
-            <ResponsiveGridLayout
-              width={containerWidth}
-              layouts={layouts}
-              breakpoints={BREAKPOINTS}
-              cols={COLS}
-              rowHeight={120}
-              margin={[12, 12]}
-              containerPadding={[0, 0]}
-              onLayoutChange={handleLayoutChange}
-              dragConfig={locked ? { enabled: false } : { handle: '.panel-drag-handle' }}
-              resizeConfig={locked ? { enabled: false } : { handles: ['se'] }}
-              compactor={undefined}
-            >
-              {PANEL_CONFIGS.map(config => (
-                <div key={config.id}>
-                  <ChartPanel
-                    config={config}
-                    data={chartData}
-                    isCollapsed={!!collapsed[config.id]}
-                    isLocked={locked}
-                    onToggleCollapse={() => toggleCollapse(config.id)}
-                    onMaximize={() => setMaximizedPanel(config.id)}
-                  />
-                </div>
-              ))}
-            </ResponsiveGridLayout>
-          )}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+          {PANEL_CONFIGS.map(config => (
+            <div key={config.id} style={{ height: collapsed[config.id] ? 'auto' : 280 }}>
+              <ChartPanel
+                config={config}
+                data={chartData}
+                isCollapsed={!!collapsed[config.id]}
+                isLocked={locked}
+                onToggleCollapse={() => toggleCollapse(config.id)}
+                onMaximize={() => setMaximizedPanel(config.id)}
+              />
+            </div>
+          ))}
         </div>
       )}
 
@@ -633,8 +529,8 @@ function ChartPanel({ config, data, isCollapsed, isLocked, onToggleCollapse, onM
       </div>
       {/* Chart content */}
       {!isCollapsed && (
-        <div className="flex-1 min-h-0 p-2" style={{ minHeight: 120 }}>
-          <ResponsiveContainer width="100%" height="100%" minHeight={100}>
+        <div className="flex-1 min-h-0 p-2" style={{ minHeight: 140 }}>
+          <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={120}>
             <LineChart data={data} syncId="host-dashboard">
               <CartesianGrid strokeDasharray="3 3" stroke="#333" />
               <XAxis dataKey="time" stroke="#666" tick={{ fontSize: 11 }} interval="preserveStartEnd" />

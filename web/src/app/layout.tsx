@@ -26,7 +26,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body className={`${sans.variable} ${mono.variable} font-sans bg-zinc-950 text-zinc-100 min-h-screen`}>
         <AuthProvider>
           <Nav />
-          <main className="max-w-6xl mx-auto px-4 py-6 has-[.dashboard-wide]:max-w-screen-2xl">
+          <main className="max-w-6xl mx-auto px-4 py-6 has-[.dashboard-wide]:max-w-full has-[.dashboard-wide]:px-6">
             {children}
           </main>
         </AuthProvider>
