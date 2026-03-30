@@ -22,7 +22,10 @@ mod linux {
     use std::ffi::CString;
     use std::fs;
 
-    const REAL_FS_TYPES: &[&str] = &["ext2", "ext3", "ext4", "xfs", "btrfs", "zfs", "ntfs", "vfat", "fat32", "exfat", "f2fs", "reiserfs"];
+    const VIRTUAL_FS: &[&str] = &["proc", "sysfs", "devpts", "tmpfs", "devtmpfs", "cgroup", "cgroup2",
+        "pstore", "securityfs", "debugfs", "configfs", "fusectl", "mqueue",
+        "hugetlbfs", "autofs", "rpc_pipefs", "nfsd", "binfmt_misc", "tracefs",
+        "squashfs", "overlay", "ramfs", "efivarfs"];
 
     pub fn collect_disk_usage() -> Vec<DiskUsage> {
         let Ok(contents) = fs::read_to_string("/proc/mounts") else {
@@ -40,7 +43,8 @@ mod linux {
             let mount_point = parts[1];
             let fs_type = parts[2];
 
-            if !REAL_FS_TYPES.contains(&fs_type) {
+            // Skip virtual filesystems; keep anything backed by a real device
+            if !device.starts_with("/dev/") || VIRTUAL_FS.contains(&fs_type) {
                 continue;
             }
 
