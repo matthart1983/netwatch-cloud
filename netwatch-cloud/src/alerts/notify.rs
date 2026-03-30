@@ -49,7 +49,7 @@ pub async fn send_alert(
             if !api_key.is_empty() {
                 let subject = format!("{} [{}] {}", emoji, severity.to_uppercase(), message);
                 let body = serde_json::json!({
-                    "from": "NetWatch <alerts@netwatch.dev>",
+                    "from": "NetWatch <onboarding@resend.dev>",
                     "to": [email],
                     "subject": subject,
                     "text": format!("NetWatch Alert\n\nHost: {}\nStatus: {}\n\n{}", hostname, severity.to_uppercase(), message),

@@ -26,7 +26,7 @@ pub struct AgentConfig {
 impl Default for AgentConfig {
     fn default() -> Self {
         Self {
-            endpoint: "https://api.netwatch.dev/api/v1/ingest".to_string(),
+            endpoint: "https://netwatch-api-production.up.railway.app/api/v1/ingest".to_string(),
             api_key: String::new(),
             interval_secs: 15,
             health_interval_secs: 30,
