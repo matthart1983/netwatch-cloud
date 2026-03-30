@@ -8,7 +8,7 @@ import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianG
 
 import {
   ChevronDown, ChevronRight, ChevronUp, Pause, Circle,
-  GripVertical, Maximize2, Minimize2,
+  GripVertical, Maximize2, Minimize2, Lock, Unlock, RotateCcw,
 } from 'lucide-react'
 
 // ─── Constants ───────────────────────────────────────────────
@@ -237,6 +237,14 @@ export default function HostDetailPage() {
     })
   }, [])
 
+  const toggleLock = useCallback(() => setLocked(prev => !prev), [])
+
+  const resetLayout = useCallback(() => {
+    setCollapsed({})
+    setLocked(false)
+    saveCollapsed({})
+  }, [])
+
   // Data fetching
   const fetchData = useCallback(async () => {
     if (!token || !id) return
@@ -430,17 +438,39 @@ export default function HostDetailPage() {
         <LiveStatCard label="Connections" value={connStats.current != null ? connStats.current.toFixed(0) : '—'} delta={getDeltaInfo(connStats.current, connStats.avg)} valueColor="text-zinc-100" />
       </div>
 
-      {/* === Time Range === */}
-      <div className="flex gap-2 mb-4">
-        {RANGES.map(r => (
+      {/* === Time Range + Dashboard Toolbar === */}
+      <div className="flex items-center justify-between mb-4">
+        <div className="flex gap-2">
+          {RANGES.map(r => (
+            <button
+              key={r.value}
+              onClick={() => { setRange(r.value); setLoading(true) }}
+              className={`px-3 py-1 rounded text-sm ${range === r.value ? 'bg-emerald-600 text-white' : 'bg-zinc-800 text-zinc-400 hover:text-zinc-100'}`}
+            >
+              {r.label}
+            </button>
+          ))}
+        </div>
+        <div className="flex items-center gap-2">
           <button
-            key={r.value}
-            onClick={() => { setRange(r.value); setLoading(true) }}
-            className={`px-3 py-1 rounded text-sm ${range === r.value ? 'bg-emerald-600 text-white' : 'bg-zinc-800 text-zinc-400 hover:text-zinc-100'}`}
+            onClick={toggleLock}
+            className={`flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-medium transition-colors ${
+              locked ? 'bg-yellow-500/15 text-yellow-400 border border-yellow-500/30' : 'bg-zinc-800 text-zinc-400 hover:text-zinc-100 border border-zinc-700'
+            }`}
+            title={locked ? 'Unlock panels' : 'Lock panels (prevent collapse)'}
           >
-            {r.label}
+            {locked ? <Lock size={12} /> : <Unlock size={12} />}
+            {locked ? 'Locked' : 'Unlocked'}
           </button>
-        ))}
+          <button
+            onClick={resetLayout}
+            className="flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-medium bg-zinc-800 text-zinc-400 hover:text-zinc-100 border border-zinc-700 transition-colors"
+            title="Reset all panels"
+          >
+            <RotateCcw size={12} />
+            Reset
+          </button>
+        </div>
       </div>
 
       {/* === Chart Grid === */}
@@ -502,7 +532,15 @@ const CORE_COLORS = ['#34d399', '#60a5fa', '#fbbf24', '#f87171', '#a78bfa', '#f4
 
 function getCoreLines(data: Record<string, unknown>[]) {
   if (data.length === 0) return []
-  const coreKeys = Object.keys(data[0]).filter(k => k.startsWith('core_')).sort((a, b) => parseInt(a.split('_')[1]) - parseInt(b.split('_')[1]))
+  // Scan all data points for core keys (first point might not have them)
+  const coreKeySet = new Set<string>()
+  for (const d of data) {
+    for (const k of Object.keys(d)) {
+      if (k.startsWith('core_')) coreKeySet.add(k)
+    }
+    if (coreKeySet.size > 0) break  // found cores, no need to keep scanning
+  }
+  const coreKeys = Array.from(coreKeySet).sort((a, b) => parseInt(a.split('_')[1]) - parseInt(b.split('_')[1]))
   return coreKeys.map((key, i) => ({
     dataKey: key,
     stroke: CORE_COLORS[i % CORE_COLORS.length],
