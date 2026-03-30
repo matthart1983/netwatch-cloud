@@ -186,7 +186,7 @@ NoNewPrivileges=yes
 ProtectSystem=strict
 ProtectHome=yes
 ReadWritePaths=$DATA_DIR
-ReadOnlyPaths=$CONFIG_DIR
+ReadOnlyPaths=$CONFIG_DIR /proc /sys
 PrivateTmp=yes
 
 [Install]
