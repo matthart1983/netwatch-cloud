@@ -132,24 +132,92 @@ pub async fn get_metrics(
     let from = query.from.unwrap_or(now - chrono::Duration::hours(24));
     let to = query.to.unwrap_or(now);
 
-    let rows = sqlx::query(
-        r#"
-        SELECT time, gateway_rtt_ms, gateway_loss_pct, dns_rtt_ms, dns_loss_pct, connection_count, cpu_usage_pct, memory_used_bytes, memory_available_bytes, load_avg_1m, load_avg_5m, load_avg_15m, swap_total_bytes, swap_used_bytes, disk_read_bytes, disk_write_bytes, tcp_time_wait, tcp_close_wait, cpu_per_core
-        FROM snapshots
-        WHERE host_id = $1 AND time >= $2 AND time <= $3
-        ORDER BY time ASC
-        "#,
-    )
-    .bind(id)
-    .bind(from)
-    .bind(to)
-    .fetch_all(&state.db)
-    .await
-    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    // Downsampling: choose bucket size based on time range
+    let range_hours = (to - from).num_hours();
+    let bucket = if range_hours <= 1 {
+        None // raw data
+    } else if range_hours <= 6 {
+        Some("1 minute")
+    } else if range_hours <= 24 {
+        Some("5 minutes")
+    } else {
+        Some("15 minutes")
+    };
 
-    let points: Vec<MetricPoint> = rows
-        .iter()
-        .map(|row| {
+    let points: Vec<MetricPoint> = if let Some(interval) = bucket {
+        let query_str = format!(
+            r#"
+            SELECT date_bin('{interval}', time, TIMESTAMPTZ '2000-01-01') as bucket_time,
+                   AVG(gateway_rtt_ms) as gateway_rtt_ms, AVG(gateway_loss_pct) as gateway_loss_pct,
+                   AVG(dns_rtt_ms) as dns_rtt_ms, AVG(dns_loss_pct) as dns_loss_pct,
+                   AVG(connection_count)::int as connection_count,
+                   AVG(cpu_usage_pct) as cpu_usage_pct,
+                   AVG(memory_used_bytes)::bigint as memory_used_bytes, AVG(memory_available_bytes)::bigint as memory_available_bytes,
+                   AVG(load_avg_1m) as load_avg_1m, AVG(load_avg_5m) as load_avg_5m, AVG(load_avg_15m) as load_avg_15m,
+                   AVG(swap_total_bytes)::bigint as swap_total_bytes, AVG(swap_used_bytes)::bigint as swap_used_bytes,
+                   AVG(disk_read_bytes)::bigint as disk_read_bytes, AVG(disk_write_bytes)::bigint as disk_write_bytes,
+                   AVG(tcp_time_wait)::int as tcp_time_wait, AVG(tcp_close_wait)::int as tcp_close_wait
+            FROM snapshots
+            WHERE host_id = $1 AND time >= $2 AND time <= $3
+            GROUP BY bucket_time
+            ORDER BY bucket_time ASC
+            "#,
+            interval = interval,
+        );
+
+        let rows = sqlx::query(&query_str)
+            .bind(id)
+            .bind(from)
+            .bind(to)
+            .fetch_all(&state.db)
+            .await
+            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+        rows.iter().map(|row| {
+            use sqlx::Row;
+            MetricPoint {
+                time: row.get("bucket_time"),
+                gateway_rtt_ms: row.get("gateway_rtt_ms"),
+                gateway_loss_pct: row.get("gateway_loss_pct"),
+                dns_rtt_ms: row.get("dns_rtt_ms"),
+                dns_loss_pct: row.get("dns_loss_pct"),
+                connection_count: row.get("connection_count"),
+                cpu_usage_pct: row.get("cpu_usage_pct"),
+                memory_used_bytes: row.get("memory_used_bytes"),
+                memory_available_bytes: row.get("memory_available_bytes"),
+                load_avg_1m: row.get("load_avg_1m"),
+                load_avg_5m: row.get("load_avg_5m"),
+                load_avg_15m: row.get("load_avg_15m"),
+                swap_total_bytes: row.get("swap_total_bytes"),
+                swap_used_bytes: row.get("swap_used_bytes"),
+                disk_read_bytes: row.get("disk_read_bytes"),
+                disk_write_bytes: row.get("disk_write_bytes"),
+                disk_usage_pct: None,
+                tcp_time_wait: row.get("tcp_time_wait"),
+                tcp_close_wait: row.get("tcp_close_wait"),
+                net_rx_bytes: None,
+                net_tx_bytes: None,
+                cpu_per_core: None,
+            }
+        }).collect()
+    } else {
+        // Raw query for ≤1h
+        let rows = sqlx::query(
+            r#"
+            SELECT time, gateway_rtt_ms, gateway_loss_pct, dns_rtt_ms, dns_loss_pct, connection_count, cpu_usage_pct, memory_used_bytes, memory_available_bytes, load_avg_1m, load_avg_5m, load_avg_15m, swap_total_bytes, swap_used_bytes, disk_read_bytes, disk_write_bytes, tcp_time_wait, tcp_close_wait, cpu_per_core
+            FROM snapshots
+            WHERE host_id = $1 AND time >= $2 AND time <= $3
+            ORDER BY time ASC
+            "#,
+        )
+        .bind(id)
+        .bind(from)
+        .bind(to)
+        .fetch_all(&state.db)
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+        rows.iter().map(|row| {
             use sqlx::Row;
             MetricPoint {
                 time: row.get("time"),
@@ -175,27 +243,47 @@ pub async fn get_metrics(
                 net_tx_bytes: None,
                 cpu_per_core: row.get("cpu_per_core"),
             }
-        })
-        .collect();
+        }).collect()
+    };
 
-    // Fetch aggregated network utilisation per snapshot time
-    let net_rows = sqlx::query(
-        r#"
-        SELECT time, SUM(rx_bytes_delta)::bigint as rx, SUM(tx_bytes_delta)::bigint as tx
-        FROM interface_metrics
-        WHERE host_id = $1 AND time >= $2 AND time <= $3
-        GROUP BY time
-        ORDER BY time ASC
-        "#,
-    )
-    .bind(id)
-    .bind(from)
-    .bind(to)
-    .fetch_all(&state.db)
-    .await
-    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    // Fetch aggregated network utilisation (also downsampled if needed)
+    let net_rows = if let Some(interval) = bucket {
+        let net_query = format!(
+            r#"
+            SELECT date_bin('{interval}', time, TIMESTAMPTZ '2000-01-01') as time,
+                   SUM(rx_bytes_delta)::bigint as rx, SUM(tx_bytes_delta)::bigint as tx
+            FROM interface_metrics
+            WHERE host_id = $1 AND time >= $2 AND time <= $3
+            GROUP BY 1
+            ORDER BY 1 ASC
+            "#,
+            interval = interval,
+        );
+        sqlx::query(&net_query)
+            .bind(id)
+            .bind(from)
+            .bind(to)
+            .fetch_all(&state.db)
+            .await
+            .unwrap_or_default()
+    } else {
+        sqlx::query(
+            r#"
+            SELECT time, SUM(rx_bytes_delta)::bigint as rx, SUM(tx_bytes_delta)::bigint as tx
+            FROM interface_metrics
+            WHERE host_id = $1 AND time >= $2 AND time <= $3
+            GROUP BY time
+            ORDER BY time ASC
+            "#,
+        )
+        .bind(id)
+        .bind(from)
+        .bind(to)
+        .fetch_all(&state.db)
+        .await
+        .unwrap_or_default()
+    };
 
-    // Build a lookup map from time -> (rx, tx)
     let net_map: std::collections::HashMap<String, (i64, i64)> = net_rows
         .iter()
         .map(|row| {
@@ -207,22 +295,43 @@ pub async fn get_metrics(
         })
         .collect();
 
-    // Fetch max disk usage % per snapshot time (highest mount point)
-    let disk_rows = sqlx::query(
-        r#"
-        SELECT time, MAX(usage_pct) as max_usage
-        FROM disk_metrics
-        WHERE host_id = $1 AND time >= $2 AND time <= $3
-        GROUP BY time
-        ORDER BY time ASC
-        "#,
-    )
-    .bind(id)
-    .bind(from)
-    .bind(to)
-    .fetch_all(&state.db)
-    .await
-    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    // Fetch max disk usage % (also downsampled)
+    let disk_rows = if let Some(interval) = bucket {
+        let disk_query = format!(
+            r#"
+            SELECT date_bin('{interval}', time, TIMESTAMPTZ '2000-01-01') as time,
+                   MAX(usage_pct) as max_usage
+            FROM disk_metrics
+            WHERE host_id = $1 AND time >= $2 AND time <= $3
+            GROUP BY 1
+            ORDER BY 1 ASC
+            "#,
+            interval = interval,
+        );
+        sqlx::query(&disk_query)
+            .bind(id)
+            .bind(from)
+            .bind(to)
+            .fetch_all(&state.db)
+            .await
+            .unwrap_or_default()
+    } else {
+        sqlx::query(
+            r#"
+            SELECT time, MAX(usage_pct) as max_usage
+            FROM disk_metrics
+            WHERE host_id = $1 AND time >= $2 AND time <= $3
+            GROUP BY time
+            ORDER BY time ASC
+            "#,
+        )
+        .bind(id)
+        .bind(from)
+        .bind(to)
+        .fetch_all(&state.db)
+        .await
+        .unwrap_or_default()
+    };
 
     let disk_map: std::collections::HashMap<String, f64> = disk_rows
         .iter()
