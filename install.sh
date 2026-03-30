@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/sh
 set -e
 
 # NetWatch Agent installer & updater
@@ -16,7 +16,7 @@ SERVICE_USER="netwatch"
 MODE="install"
 
 # Parse args
-while [[ $# -gt 0 ]]; do
+while [ $# -gt 0 ]; do
   case $1 in
     --api-key)   API_KEY="$2"; shift 2 ;;
     --endpoint)  ENDPOINT="$2"; shift 2 ;;
@@ -56,7 +56,7 @@ if [ "$MODE" = "remove" ]; then
 fi
 
 # ── Check root ───────────────────────────────────────────
-if [ "$EUID" -ne 0 ]; then
+if [ "$(id -u)" -ne 0 ]; then
   echo "Error: This script must be run as root (use sudo)"
   exit 1
 fi
@@ -106,9 +106,9 @@ REPO="matthart1983/netwatch-cloud"
 DOWNLOAD_URL="https://github.com/${REPO}/releases/latest/download/netwatch-agent-linux-${ARCH}"
 echo "Downloading agent from $DOWNLOAD_URL ..."
 
-if command -v curl &> /dev/null; then
+if command -v curl >/dev/null 2>&1; then
   curl -fsSL -o /tmp/netwatch-agent "$DOWNLOAD_URL" 2>/dev/null
-elif command -v wget &> /dev/null; then
+elif command -v wget >/dev/null 2>&1; then
   wget -qO /tmp/netwatch-agent "$DOWNLOAD_URL"
 else
   echo "Error: curl or wget is required"
@@ -137,7 +137,7 @@ systemctl stop netwatch-agent 2>/dev/null || true
 
 # ── Create service user (install only) ───────────────────
 if [ "$MODE" = "install" ]; then
-  if ! id "$SERVICE_USER" &>/dev/null; then
+  if ! id "$SERVICE_USER" >/dev/null 2>&1; then
     echo "Creating service user '$SERVICE_USER' ..."
     useradd --system --no-create-home --shell /usr/sbin/nologin "$SERVICE_USER"
   fi
