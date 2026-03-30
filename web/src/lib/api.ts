@@ -91,6 +91,7 @@ export interface MetricPoint {
   tcp_close_wait: number | null
   net_rx_bytes: number | null
   net_tx_bytes: number | null
+  cpu_per_core: number[] | null
 }
 
 export interface MetricsResponse {

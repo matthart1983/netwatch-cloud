@@ -24,7 +24,7 @@ const RANGES: { label: string; value: TimeRange; hours: number }[] = [
 
 const TOOLTIP_STYLE = { background: '#1a1a1a', border: '1px solid #333', fontSize: 12 }
 
-const PANEL_IDS = ['latency-loss', 'network-conn', 'cpu-memory', 'load-swap', 'disk-util', 'tcp-states'] as const
+const PANEL_IDS = ['latency-loss', 'network-conn', 'cpu-memory', 'cpu-per-core', 'load-swap', 'disk-util', 'tcp-states'] as const
 type PanelId = typeof PANEL_IDS[number]
 
 const LS_KEY = 'host-dashboard-state-v3'
@@ -82,6 +82,13 @@ const PANEL_CONFIGS: PanelConfig[] = [
       { dataKey: 'mem_used', stroke: '#f472b6', name: 'Used (GB)' },
       { dataKey: 'mem_avail', stroke: '#38bdf8', name: 'Available (GB)' },
     ],
+  },
+  {
+    id: 'cpu-per-core',
+    title: 'CPU per Core',
+    statKeys: [],
+    yDomain: [0, 100],
+    lines: [],  // dynamic — generated at render time
   },
   {
     id: 'load-swap',
@@ -306,6 +313,7 @@ export default function HostDetailPage() {
         close_wait: p.tcp_close_wait ?? undefined,
         net_rx: p.net_rx_bytes != null ? p.net_rx_bytes / 1024 : undefined,
         net_tx: p.net_tx_bytes != null ? p.net_tx_bytes / 1024 : undefined,
+        ...(p.cpu_per_core ? Object.fromEntries(p.cpu_per_core.map((v, i) => [`core_${i}`, v])) : {}),
       })
     }
     return result
@@ -490,6 +498,18 @@ function LiveStatCard({ label, value, delta, valueColor }: {
   )
 }
 
+const CORE_COLORS = ['#34d399', '#60a5fa', '#fbbf24', '#f87171', '#a78bfa', '#f472b6', '#fb923c', '#2dd4bf', '#e879f9', '#4ade80', '#38bdf8', '#facc15', '#f43f5e', '#818cf8', '#ec4899', '#f59e0b', '#14b8a6', '#8b5cf6']
+
+function getCoreLines(data: Record<string, unknown>[]) {
+  if (data.length === 0) return []
+  const coreKeys = Object.keys(data[0]).filter(k => k.startsWith('core_')).sort((a, b) => parseInt(a.split('_')[1]) - parseInt(b.split('_')[1]))
+  return coreKeys.map((key, i) => ({
+    dataKey: key,
+    stroke: CORE_COLORS[i % CORE_COLORS.length],
+    name: `Core ${key.split('_')[1]}`,
+  }))
+}
+
 function ChartPanel({ config, data, isCollapsed, isLocked, onToggleCollapse, onMaximize }: {
   config: PanelConfig
   data: Record<string, unknown>[]
@@ -499,6 +519,10 @@ function ChartPanel({ config, data, isCollapsed, isLocked, onToggleCollapse, onM
   onMaximize: () => void
 }) {
   const primaryStat = config.statKeys[0] ? computeStats(data, config.statKeys[0].key) : null
+  const lines = config.id === 'cpu-per-core' ? getCoreLines(data) : config.lines
+
+  // Hide per-core panel if no core data
+  if (config.id === 'cpu-per-core' && lines.length === 0) return null
 
   return (
     <div className="bg-zinc-900 border border-zinc-800 rounded-lg h-full flex flex-col overflow-hidden">
@@ -536,7 +560,7 @@ function ChartPanel({ config, data, isCollapsed, isLocked, onToggleCollapse, onM
               <XAxis dataKey="time" stroke="#666" tick={{ fontSize: 11 }} interval="preserveStartEnd" />
               <YAxis stroke="#666" tick={{ fontSize: 11 }} domain={config.yDomain} />
               <Tooltip contentStyle={TOOLTIP_STYLE} />
-              {config.lines.map(line => (
+              {lines.map(line => (
                 <Line key={line.dataKey} dataKey={line.dataKey} stroke={line.stroke} dot={false} connectNulls strokeWidth={1.5} name={line.name} />
               ))}
             </LineChart>
@@ -551,6 +575,7 @@ function MaximizedOverlay({ config, data, onClose }: {
   config: PanelConfig; data: Record<string, unknown>[]; onClose: () => void
 }) {
   const primaryStat = config.statKeys[0] ? computeStats(data, config.statKeys[0].key) : null
+  const lines = config.id === 'cpu-per-core' ? getCoreLines(data) : config.lines
 
   return (
     <div className="fixed inset-0 z-30 bg-zinc-950/98 flex flex-col" onClick={onClose}>
@@ -575,7 +600,7 @@ function MaximizedOverlay({ config, data, onClose }: {
             <XAxis dataKey="time" stroke="#666" tick={{ fontSize: 12 }} interval="preserveStartEnd" />
             <YAxis stroke="#666" tick={{ fontSize: 12 }} domain={config.yDomain} />
             <Tooltip contentStyle={TOOLTIP_STYLE} />
-            {config.lines.map(line => (
+            {lines.map(line => (
               <Line key={line.dataKey} dataKey={line.dataKey} stroke={line.stroke} dot={false} connectNulls strokeWidth={2} name={line.name} />
             ))}
           </LineChart>
