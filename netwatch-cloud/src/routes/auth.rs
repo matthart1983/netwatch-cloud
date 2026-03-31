@@ -32,19 +32,49 @@ pub async fn register(
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
     let account_id = Uuid::new_v4();
+    let trial_ends_at = chrono::Utc::now() + chrono::Duration::days(14);
 
     sqlx::query(
-        "INSERT INTO accounts (id, email, password_hash) VALUES ($1, $2, $3)"
+        "INSERT INTO accounts (id, email, password_hash, trial_ends_at) VALUES ($1, $2, $3, $4)"
     )
     .bind(account_id)
     .bind(&req.email)
     .bind(&password_hash)
+    .bind(trial_ends_at)
     .execute(&state.db)
     .await
     .map_err(|e| {
         tracing::error!("register failed: {}", e);
         StatusCode::CONFLICT // email already exists
     })?;
+
+    // Create Stripe Customer if configured
+    if let Some(ref stripe_key) = state.config.stripe_secret_key {
+        match ureq::post("https://api.stripe.com/v1/customers")
+            .set("Authorization", &format!("Bearer {}", stripe_key))
+            .send_form(&[
+                ("email", req.email.as_str()),
+                ("metadata[account_id]", &account_id.to_string()),
+            ]) {
+            Ok(resp) => {
+                if let Ok(body) = resp.into_json::<serde_json::Value>() {
+                    if let Some(cust_id) = body["id"].as_str() {
+                        let _ = sqlx::query(
+                            "UPDATE accounts SET stripe_customer_id = $1 WHERE id = $2",
+                        )
+                        .bind(cust_id)
+                        .bind(account_id)
+                        .execute(&state.db)
+                        .await;
+                        tracing::info!("created stripe customer {} for account {}", cust_id, account_id);
+                    }
+                }
+            }
+            Err(e) => {
+                tracing::error!("failed to create stripe customer: {}", e);
+            }
+        }
+    }
 
     // Create first API key
     let raw_key = format!("nw_ak_{}", generate_random_string(32));

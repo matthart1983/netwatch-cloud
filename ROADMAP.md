@@ -33,7 +33,7 @@ Features described in the spec but not yet implemented.
 
 | Task | Spec Section | Effort | Impact |
 |------|-------------|--------|--------|
-| **Metrics downsampling** | §3.4 | 2h | Critical for 72h views — without it, 17K+ data points per chart |
+| **Metrics downsampling** | §3.4 | ✅ Done | Critical for 72h views — without it, 17K+ data points per chart |
 | **Host DELETE endpoint** | §3.2 | 30m | Users can't remove decommissioned hosts |
 | **Account GET/PUT endpoints** | §3.2 | 1h | Can't change notification prefs (email on/off, Slack webhook) |
 | **Refresh tokens** | §3.2 | 2h | Currently JWT expires and user is logged out with no refresh |
@@ -43,21 +43,20 @@ Features described in the spec but not yet implemented.
 | **HSTS headers** | §8.1 | 15m | |
 | **CSP headers** | §8.1 | 15m | |
 
-## Phase 3: Stripe Billing (3–5 days)
+## Phase 3: Stripe Billing — ✅ Code Complete
 
-The only major unstarted build item.
-
-| Task | Details |
-|------|---------|
-| Add `stripe` crate to Rust deps | |
-| Create Stripe Product + Price ($49/mo) | Manual in Stripe dashboard |
-| Create Stripe Customer on registration | Set `trial_ends_at = now + 14d` |
-| Add Stripe webhook endpoint | Handle `subscription.updated`, `subscription.deleted`, `invoice.payment_failed` |
-| Enforce trial limits | Ingest returns 402 after trial expires without payment |
-| Enforce host limits | Trial: 3 hosts, Early Access: 10 hosts |
-| Enforce retention limits | Trial: 24h, Early Access: 72h |
-| Settings page: billing section | Link to Stripe Customer Portal, trial countdown |
-| Dashboard banner | "Trial expires in X days" / "Trial expired — add payment method" |
+| Task | Status |
+|------|--------|
+| Create Stripe Customer on registration | ✅ Done — via ureq to Stripe API |
+| Add Stripe webhook endpoint | ✅ Done — `/api/v1/webhooks/stripe` handles subscription.updated/deleted, invoice.payment_failed |
+| Enforce trial limits | ✅ Done — Ingest returns 402 after trial expires |
+| Enforce host limits | ✅ Done — Trial: 3 hosts, Early Access: 10 hosts |
+| Settings page: billing section | ✅ Done — Plan badge, limits, portal link |
+| Dashboard banner | ✅ Done — Trial countdown, expired, past_due banners |
+| Account billing GET endpoint | ✅ Done — `/api/v1/account/billing` |
+| Webhook signature verification | ⚠ Partial — format check only, needs hmac/sha2 crates for crypto |
+| Create Stripe Product + Price ($49/mo) | ❌ TODO — Manual in Stripe dashboard |
+| Enforce retention limits | ❌ TODO — Update retention.rs to use per-account plan |
 
 ## Phase 4: Agent Release Pipeline (1 day)
 

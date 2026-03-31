@@ -6,6 +6,8 @@ pub struct ServerConfig {
     pub jwt_secret: String,
     pub bind_addr: String,
     pub resend_api_key: Option<String>,
+    pub stripe_secret_key: Option<String>,
+    pub stripe_webhook_secret: Option<String>,
 }
 
 impl ServerConfig {
@@ -23,6 +25,8 @@ impl ServerConfig {
                 }
             }),
             resend_api_key: std::env::var("RESEND_API_KEY").ok(),
+            stripe_secret_key: std::env::var("STRIPE_SECRET_KEY").ok(),
+            stripe_webhook_secret: std::env::var("STRIPE_WEBHOOK_SECRET").ok(),
         })
     }
 }

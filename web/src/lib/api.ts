@@ -193,3 +193,14 @@ export async function getAlertHistory(hostId?: string): Promise<AlertEvent[]> {
   const params = hostId ? `?host_id=${hostId}` : ''
   return fetchAPI(`/api/v1/alerts/history${params}`)
 }
+
+export interface BillingInfo {
+  plan: string
+  trial_ends_at: string | null
+  stripe_customer_id: string | null
+  portal_url: string | null
+}
+
+export async function getBilling(): Promise<BillingInfo> {
+  return fetchAPI('/api/v1/account/billing')
+}

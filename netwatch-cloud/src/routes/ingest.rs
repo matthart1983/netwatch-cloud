@@ -18,7 +18,56 @@ pub async fn ingest(
         return Err(StatusCode::PAYLOAD_TOO_LARGE);
     }
 
+    // Enforce billing: check plan and trial status
+    let account = sqlx::query_as::<_, (String, Option<chrono::DateTime<chrono::Utc>>)>(
+        "SELECT plan, trial_ends_at FROM accounts WHERE id = $1",
+    )
+    .bind(agent.account_id)
+    .fetch_optional(&state.db)
+    .await
+    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
+    .ok_or(StatusCode::UNAUTHORIZED)?;
+
+    let (plan, trial_ends_at) = account;
+    if plan == "trial" {
+        if let Some(ends) = trial_ends_at {
+            if ends < chrono::Utc::now() {
+                return Err(StatusCode::PAYMENT_REQUIRED);
+            }
+        }
+    } else if plan == "expired" || plan == "past_due" {
+        return Err(StatusCode::PAYMENT_REQUIRED);
+    }
+
     let host_id = payload.host.host_id;
+
+    // Enforce host limits
+    let host_count: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM hosts WHERE account_id = $1")
+            .bind(agent.account_id)
+            .fetch_one(&state.db)
+            .await
+            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    let host_limit: i64 = match plan.as_str() {
+        "early_access" => 10,
+        _ => 3,
+    };
+
+    if host_count >= host_limit {
+        let host_exists: bool = sqlx::query_scalar(
+            "SELECT EXISTS(SELECT 1 FROM hosts WHERE id = $1 AND account_id = $2)",
+        )
+        .bind(host_id)
+        .bind(agent.account_id)
+        .fetch_one(&state.db)
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+        if !host_exists {
+            return Err(StatusCode::PAYMENT_REQUIRED);
+        }
+    }
 
     // Upsert host
     sqlx::query(

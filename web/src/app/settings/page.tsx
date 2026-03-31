@@ -3,25 +3,27 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/lib/auth'
-import { getApiKeys, createApiKey, deleteApiKey, ApiKeyInfo } from '@/lib/api'
+import { getApiKeys, createApiKey, deleteApiKey, ApiKeyInfo, getBilling, BillingInfo } from '@/lib/api'
 
 export default function SettingsPage() {
   const { token, isLoading: authLoading } = useAuth()
   const router = useRouter()
   const [keys, setKeys] = useState<ApiKeyInfo[]>([])
   const [newKey, setNewKey] = useState<string | null>(null)
+  const [billing, setBilling] = useState<BillingInfo | null>(null)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     if (authLoading) return
     if (!token) { router.push('/login'); return }
-    loadKeys()
+    loadData()
   }, [authLoading, token, router])
 
-  async function loadKeys() {
+  async function loadData() {
     try {
-      const data = await getApiKeys()
-      setKeys(data)
+      const [keysData, billingData] = await Promise.all([getApiKeys(), getBilling()])
+      setKeys(keysData)
+      setBilling(billingData)
     } catch {
       // handled
     } finally {
@@ -33,7 +35,7 @@ export default function SettingsPage() {
     try {
       const result = await createApiKey()
       setNewKey(result.api_key)
-      loadKeys()
+      loadData()
     } catch {
       // handled
     }
@@ -43,10 +45,16 @@ export default function SettingsPage() {
     if (!confirm('Revoke this API key? Agents using it will stop sending data.')) return
     try {
       await deleteApiKey(id)
-      loadKeys()
+      loadData()
     } catch {
       // handled
     }
+  }
+
+  function getTrialDaysLeft(): number {
+    if (!billing?.trial_ends_at) return 0
+    const diff = new Date(billing.trial_ends_at).getTime() - Date.now()
+    return Math.max(0, Math.ceil(diff / (1000 * 60 * 60 * 24)))
   }
 
   if (authLoading || loading) return <div className="text-zinc-400 mt-10">Loading...</div>
@@ -54,6 +62,54 @@ export default function SettingsPage() {
   return (
     <div className="max-w-2xl">
       <h1 className="text-2xl font-bold mb-6">Settings</h1>
+
+      {billing && (
+        <section className="mb-8">
+          <h2 className="text-lg font-semibold mb-4">Billing</h2>
+          <div className="bg-zinc-900 border border-zinc-800 rounded-lg p-4">
+            <div className="flex items-center gap-3 mb-3">
+              <span className={`px-2 py-0.5 rounded text-xs font-medium ${
+                billing.plan === 'early_access' ? 'bg-emerald-900 text-emerald-300' :
+                billing.plan === 'trial' ? 'bg-yellow-900 text-yellow-300' :
+                billing.plan === 'past_due' ? 'bg-orange-900 text-orange-300' :
+                'bg-red-900 text-red-300'
+              }`}>
+                {billing.plan === 'early_access' ? 'Early Access' :
+                 billing.plan === 'trial' ? 'Trial' :
+                 billing.plan === 'past_due' ? 'Past Due' : 'Expired'}
+              </span>
+              <span className="text-sm text-zinc-400">
+                {billing.plan === 'trial' && `${getTrialDaysLeft()} days remaining`}
+                {billing.plan === 'early_access' && '$49/mo'}
+                {billing.plan === 'expired' && 'Add a payment method to continue'}
+                {billing.plan === 'past_due' && 'Update your payment method'}
+              </span>
+            </div>
+            <p className="text-xs text-zinc-500 mb-3">
+              {billing.plan === 'early_access'
+                ? '10 hosts · 72h data retention · Email + Slack alerts'
+                : '3 hosts · 24h data retention · Email alerts only'}
+            </p>
+            {billing.portal_url ? (
+              <a
+                href={billing.portal_url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-2 rounded text-sm inline-block"
+              >
+                Manage Billing →
+              </a>
+            ) : (
+              <button
+                disabled
+                className="bg-zinc-700 text-zinc-400 px-4 py-2 rounded text-sm cursor-not-allowed"
+              >
+                Add Payment Method
+              </button>
+            )}
+          </div>
+        </section>
+      )}
 
       <section className="mb-8">
         <h2 className="text-lg font-semibold mb-4">API Keys</h2>

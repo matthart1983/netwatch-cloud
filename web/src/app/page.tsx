@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { useAuth } from '@/lib/auth'
-import { getHosts, getMetrics, Host, MetricPoint } from '@/lib/api'
+import { getHosts, getMetrics, Host, MetricPoint, getBilling, BillingInfo } from '@/lib/api'
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts'
 import {
   Activity, Radar, Bell, BarChart3, Monitor, RefreshCw,
@@ -558,10 +558,13 @@ export default function HostsPage() {
   const [hosts, setHosts] = useState<Host[]>([])
   const [hostMetrics, setHostMetrics] = useState<Record<string, HostMetrics>>({})
   const [hostPoints, setHostPoints] = useState<Record<string, MetricPoint[]>>({})
+  const [billing, setBilling] = useState<BillingInfo | null>(null)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     if (authLoading || !token) return
+
+    getBilling().then(setBilling).catch(() => {})
 
     async function fetchAll() {
       try {
@@ -623,8 +626,28 @@ export default function HostsPage() {
   const maxDisk = Math.max(...allMetrics.map(m => m.disk ?? 0), 0)
   const hasWarnings = allMetrics.some(m => (m.cpu ?? 0) > 80 || (m.memPct ?? 0) > 85 || (m.disk ?? 0) > 90)
 
+  const trialDaysLeft = billing?.trial_ends_at
+    ? Math.max(0, Math.ceil((new Date(billing.trial_ends_at).getTime() - Date.now()) / (1000 * 60 * 60 * 24)))
+    : null
+
   return (
     <div>
+      {billing?.plan === 'expired' && (
+        <div className="bg-red-950 border border-red-800 rounded-lg p-3 mb-4 text-sm text-red-300">
+          Your trial has expired. <Link href="/settings" className="underline font-medium text-red-200">Add a payment method</Link> to continue monitoring.
+        </div>
+      )}
+      {billing?.plan === 'past_due' && (
+        <div className="bg-orange-950 border border-orange-800 rounded-lg p-3 mb-4 text-sm text-orange-300">
+          Payment failed. <Link href="/settings" className="underline font-medium text-orange-200">Update your payment method</Link> to avoid service interruption.
+        </div>
+      )}
+      {billing?.plan === 'trial' && trialDaysLeft !== null && trialDaysLeft <= 3 && (
+        <div className="bg-yellow-950 border border-yellow-800 rounded-lg p-3 mb-4 text-sm text-yellow-300">
+          Your trial expires in {trialDaysLeft} {trialDaysLeft === 1 ? 'day' : 'days'}. <Link href="/settings" className="underline font-medium text-yellow-200">Add a payment method</Link> to continue.
+        </div>
+      )}
+
       {/* Fleet Health Summary */}
       <div className="flex items-center justify-between mb-6">
         <div>
