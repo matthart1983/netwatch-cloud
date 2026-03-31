@@ -3,14 +3,18 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/lib/auth'
-import { getApiKeys, createApiKey, deleteApiKey, ApiKeyInfo, getBilling, BillingInfo } from '@/lib/api'
+import { getApiKeys, createApiKey, deleteApiKey, ApiKeyInfo, getAccount, updateAccount, AccountInfo } from '@/lib/api'
 
 export default function SettingsPage() {
   const { token, isLoading: authLoading } = useAuth()
   const router = useRouter()
   const [keys, setKeys] = useState<ApiKeyInfo[]>([])
   const [newKey, setNewKey] = useState<string | null>(null)
-  const [billing, setBilling] = useState<BillingInfo | null>(null)
+  const [account, setAccount] = useState<AccountInfo | null>(null)
+  const [notifyEmail, setNotifyEmail] = useState(true)
+  const [slackWebhook, setSlackWebhook] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [saved, setSaved] = useState(false)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
@@ -21,9 +25,11 @@ export default function SettingsPage() {
 
   async function loadData() {
     try {
-      const [keysData, billingData] = await Promise.all([getApiKeys(), getBilling()])
+      const [keysData, accountData] = await Promise.all([getApiKeys(), getAccount()])
       setKeys(keysData)
-      setBilling(billingData)
+      setAccount(accountData)
+      setNotifyEmail(accountData.notify_email)
+      setSlackWebhook(accountData.slack_webhook || '')
     } catch {
       // handled
     } finally {
@@ -51,9 +57,23 @@ export default function SettingsPage() {
     }
   }
 
+  async function handleSaveNotifications() {
+    setSaving(true)
+    setSaved(false)
+    try {
+      await updateAccount({ notify_email: notifyEmail, slack_webhook: slackWebhook })
+      setSaved(true)
+      setTimeout(() => setSaved(false), 3000)
+    } catch {
+      // handled
+    } finally {
+      setSaving(false)
+    }
+  }
+
   function getTrialDaysLeft(): number {
-    if (!billing?.trial_ends_at) return 0
-    const diff = new Date(billing.trial_ends_at).getTime() - Date.now()
+    if (!account?.trial_ends_at) return 0
+    const diff = new Date(account.trial_ends_at).getTime() - Date.now()
     return Math.max(0, Math.ceil(diff / (1000 * 60 * 60 * 24)))
   }
 
@@ -63,54 +83,108 @@ export default function SettingsPage() {
     <div className="max-w-2xl">
       <h1 className="text-2xl font-bold mb-6">Settings</h1>
 
-      {billing && (
+      {/* Account & Subscription */}
+      {account && (
         <section className="mb-8">
-          <h2 className="text-lg font-semibold mb-4">Billing</h2>
-          <div className="bg-zinc-900 border border-zinc-800 rounded-lg p-4">
-            <div className="flex items-center gap-3 mb-3">
-              <span className={`px-2 py-0.5 rounded text-xs font-medium ${
-                billing.plan === 'early_access' ? 'bg-emerald-900 text-emerald-300' :
-                billing.plan === 'trial' ? 'bg-yellow-900 text-yellow-300' :
-                billing.plan === 'past_due' ? 'bg-orange-900 text-orange-300' :
-                'bg-red-900 text-red-300'
-              }`}>
-                {billing.plan === 'early_access' ? 'Early Access' :
-                 billing.plan === 'trial' ? 'Trial' :
-                 billing.plan === 'past_due' ? 'Past Due' : 'Expired'}
-              </span>
-              <span className="text-sm text-zinc-400">
-                {billing.plan === 'trial' && `${getTrialDaysLeft()} days remaining`}
-                {billing.plan === 'early_access' && '$49/mo'}
-                {billing.plan === 'expired' && 'Add a payment method to continue'}
-                {billing.plan === 'past_due' && 'Update your payment method'}
-              </span>
+          <h2 className="text-lg font-semibold mb-4">Account</h2>
+          <div className="bg-zinc-900 border border-zinc-800 rounded-lg p-4 space-y-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <div className="text-sm text-zinc-400">Email</div>
+                <div className="text-sm font-medium">{account.email}</div>
+              </div>
+              <div>
+                <div className="text-sm text-zinc-400">Member since</div>
+                <div className="text-sm font-medium">{new Date(account.created_at).toLocaleDateString()}</div>
+              </div>
             </div>
-            <p className="text-xs text-zinc-500 mb-3">
-              {billing.plan === 'early_access'
-                ? '10 hosts · 72h data retention · Email + Slack alerts'
-                : '3 hosts · 24h data retention · Email alerts only'}
-            </p>
-            {billing.portal_url ? (
-              <a
-                href={billing.portal_url}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-2 rounded text-sm inline-block"
-              >
-                Manage Billing →
-              </a>
-            ) : (
-              <button
-                disabled
-                className="bg-zinc-700 text-zinc-400 px-4 py-2 rounded text-sm cursor-not-allowed"
-              >
-                Add Payment Method
-              </button>
-            )}
+
+            <div className="border-t border-zinc-800 pt-4">
+              <div className="flex items-center gap-3 mb-2">
+                <span className={`px-2 py-0.5 rounded text-xs font-medium ${
+                  account.plan === 'early_access' ? 'bg-emerald-900 text-emerald-300' :
+                  account.plan === 'trial' ? 'bg-yellow-900 text-yellow-300' :
+                  account.plan === 'past_due' ? 'bg-orange-900 text-orange-300' :
+                  'bg-red-900 text-red-300'
+                }`}>
+                  {account.plan === 'early_access' ? 'Early Access' :
+                   account.plan === 'trial' ? 'Trial' :
+                   account.plan === 'past_due' ? 'Past Due' : 'Expired'}
+                </span>
+                <span className="text-sm text-zinc-400">
+                  {account.plan === 'trial' && `${getTrialDaysLeft()} days remaining`}
+                  {account.plan === 'early_access' && '$49/mo'}
+                  {account.plan === 'expired' && 'Add a payment method to continue'}
+                  {account.plan === 'past_due' && 'Update your payment method'}
+                </span>
+              </div>
+              <p className="text-xs text-zinc-500 mb-3">
+                {account.plan === 'early_access'
+                  ? '10 hosts · 72h data retention · Email + Slack alerts'
+                  : '3 hosts · 24h data retention · Email alerts only'}
+              </p>
+              {account.portal_url ? (
+                <a
+                  href={account.portal_url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-2 rounded text-sm inline-block"
+                >
+                  Manage Billing →
+                </a>
+              ) : (
+                <button
+                  disabled
+                  className="bg-zinc-700 text-zinc-400 px-4 py-2 rounded text-sm cursor-not-allowed"
+                >
+                  Add Payment Method
+                </button>
+              )}
+            </div>
           </div>
         </section>
       )}
 
+      {/* Notifications */}
+      <section className="mb-8">
+        <h2 className="text-lg font-semibold mb-4">Notifications</h2>
+        <div className="bg-zinc-900 border border-zinc-800 rounded-lg p-4 space-y-4">
+          <label className="flex items-center justify-between cursor-pointer">
+            <div>
+              <div className="text-sm font-medium">Email Alerts</div>
+              <div className="text-xs text-zinc-500">Receive alert notifications via email</div>
+            </div>
+            <button
+              onClick={() => setNotifyEmail(!notifyEmail)}
+              className={`relative w-10 h-5 rounded-full transition-colors ${notifyEmail ? 'bg-emerald-600' : 'bg-zinc-700'}`}
+            >
+              <span className={`absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full transition-transform ${notifyEmail ? 'translate-x-5' : ''}`} />
+            </button>
+          </label>
+
+          <div>
+            <label className="block text-sm font-medium mb-1">Slack Webhook URL</label>
+            <p className="text-xs text-zinc-500 mb-2">Receive alert notifications in a Slack channel</p>
+            <input
+              type="url"
+              value={slackWebhook}
+              onChange={e => setSlackWebhook(e.target.value)}
+              placeholder="https://hooks.slack.com/services/..."
+              className="w-full bg-zinc-950 border border-zinc-700 rounded px-3 py-2 text-sm focus:outline-none focus:border-emerald-500 placeholder-zinc-600"
+            />
+          </div>
+
+          <button
+            onClick={handleSaveNotifications}
+            disabled={saving}
+            className="bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-2 rounded text-sm disabled:opacity-50"
+          >
+            {saving ? 'Saving...' : saved ? '✓ Saved' : 'Save Notification Settings'}
+          </button>
+        </div>
+      </section>
+
+      {/* API Keys */}
       <section className="mb-8">
         <h2 className="text-lg font-semibold mb-4">API Keys</h2>
 
@@ -176,6 +250,7 @@ export default function SettingsPage() {
         </button>
       </section>
 
+      {/* Install Agent */}
       <section className="mb-8">
         <h2 className="text-lg font-semibold mb-4">Install Agent</h2>
         <p className="text-zinc-400 text-sm mb-2">
@@ -186,6 +261,7 @@ export default function SettingsPage() {
         </div>
       </section>
 
+      {/* Agent Commands */}
       <section>
         <h2 className="text-lg font-semibold mb-4">Agent Commands</h2>
         <div className="bg-zinc-900 border border-zinc-800 rounded p-3 font-mono text-xs space-y-1">

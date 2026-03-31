@@ -5,11 +5,95 @@ use axum::{
     Json,
 };
 use chrono::{DateTime, Utc};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
 use crate::auth::AuthUser;
 use crate::AppState;
+
+// --- Account GET/PUT ---
+
+#[derive(Serialize)]
+pub struct AccountInfo {
+    pub email: String,
+    pub created_at: DateTime<Utc>,
+    pub plan: String,
+    pub trial_ends_at: Option<DateTime<Utc>>,
+    pub stripe_customer_id: Option<String>,
+    pub notify_email: bool,
+    pub slack_webhook: Option<String>,
+    pub portal_url: Option<String>,
+}
+
+pub async fn get_account(
+    user: AuthUser,
+    State(state): State<Arc<AppState>>,
+) -> Result<Json<AccountInfo>, StatusCode> {
+    let row = sqlx::query_as::<_, (String, DateTime<Utc>, String, Option<DateTime<Utc>>, Option<String>, bool, Option<String>)>(
+        "SELECT email, created_at, plan, trial_ends_at, stripe_customer_id, notify_email, slack_webhook FROM accounts WHERE id = $1",
+    )
+    .bind(user.account_id)
+    .fetch_optional(&state.db)
+    .await
+    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
+    .ok_or(StatusCode::NOT_FOUND)?;
+
+    let (email, created_at, plan, trial_ends_at, stripe_customer_id, notify_email, slack_webhook) = row;
+
+    let portal_url = if let (Some(ref cust_id), Some(ref key)) =
+        (&stripe_customer_id, &state.config.stripe_secret_key)
+    {
+        create_portal_session(cust_id, key).ok()
+    } else {
+        None
+    };
+
+    Ok(Json(AccountInfo {
+        email,
+        created_at,
+        plan,
+        trial_ends_at,
+        stripe_customer_id,
+        notify_email,
+        slack_webhook,
+        portal_url,
+    }))
+}
+
+#[derive(Deserialize)]
+pub struct UpdateAccount {
+    pub notify_email: Option<bool>,
+    pub slack_webhook: Option<String>,
+}
+
+pub async fn update_account(
+    user: AuthUser,
+    State(state): State<Arc<AppState>>,
+    Json(req): Json<UpdateAccount>,
+) -> Result<StatusCode, StatusCode> {
+    if let Some(notify) = req.notify_email {
+        sqlx::query("UPDATE accounts SET notify_email = $1 WHERE id = $2")
+            .bind(notify)
+            .bind(user.account_id)
+            .execute(&state.db)
+            .await
+            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    }
+
+    if let Some(ref webhook) = req.slack_webhook {
+        let value = if webhook.is_empty() { None } else { Some(webhook.as_str()) };
+        sqlx::query("UPDATE accounts SET slack_webhook = $1 WHERE id = $2")
+            .bind(value)
+            .bind(user.account_id)
+            .execute(&state.db)
+            .await
+            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    }
+
+    Ok(StatusCode::NO_CONTENT)
+}
+
+// --- Billing ---
 
 #[derive(Serialize)]
 pub struct BillingInfo {

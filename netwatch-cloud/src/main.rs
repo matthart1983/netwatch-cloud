@@ -78,6 +78,7 @@ async fn main() -> Result<()> {
         .route("/api/v1/alerts/rules", get(routes::alerts::list_rules).post(routes::alerts::create_rule))
         .route("/api/v1/alerts/rules/{id}", axum::routing::put(routes::alerts::update_rule).delete(routes::alerts::delete_rule))
         .route("/api/v1/alerts/history", get(routes::alerts::alert_history))
+        .route("/api/v1/account", get(routes::billing::get_account).put(routes::billing::update_account))
         .route("/api/v1/account/billing", get(routes::billing::get_billing))
         .route("/api/v1/webhooks/stripe", post(routes::billing::stripe_webhook))
         .layer(middleware::from_fn(rate_limit::rate_limit_middleware))

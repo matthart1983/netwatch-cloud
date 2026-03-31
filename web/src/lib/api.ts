@@ -194,6 +194,28 @@ export async function getAlertHistory(hostId?: string): Promise<AlertEvent[]> {
   return fetchAPI(`/api/v1/alerts/history${params}`)
 }
 
+export interface AccountInfo {
+  email: string
+  created_at: string
+  plan: string
+  trial_ends_at: string | null
+  stripe_customer_id: string | null
+  notify_email: boolean
+  slack_webhook: string | null
+  portal_url: string | null
+}
+
+export async function getAccount(): Promise<AccountInfo> {
+  return fetchAPI('/api/v1/account')
+}
+
+export async function updateAccount(data: { notify_email?: boolean; slack_webhook?: string }): Promise<void> {
+  await fetchAPI('/api/v1/account', {
+    method: 'PUT',
+    body: JSON.stringify(data),
+  })
+}
+
 export interface BillingInfo {
   plan: string
   trial_ends_at: string | null
