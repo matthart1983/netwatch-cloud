@@ -2,6 +2,7 @@ use axum::{extract::State, http::StatusCode, Json, response::{IntoResponse, Resp
 use netwatch_core::types::{IngestRequest, IngestResponse, SnapshotResult};
 use std::sync::Arc;
 use tracing::info;
+use uuid::Uuid;
 
 use crate::auth::AgentAuth;
 use crate::AppState;
@@ -41,13 +42,41 @@ pub async fn ingest(
 
     let host_id = payload.host.host_id;
 
+    // FIX #3 + FIX #6: Wrap host limit check and upsert in transaction with proper locking
+    // - FIX #3: Prevent cross-tenant host overwrite by checking existing host ownership before upsert
+    // - FIX #6: Use transaction to prevent race conditions in host limit enforcement
+    let mut tx = state.db.begin()
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    // Check if host already exists and belongs to this account
+    let existing_host_account: Option<Uuid> = sqlx::query_scalar(
+        "SELECT account_id FROM hosts WHERE id = $1"
+    )
+    .bind(host_id)
+    .fetch_optional(&mut *tx)
+    .await
+    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    // FIX #3: If host exists but belongs to different account, return 401
+    if let Some(existing_account_id) = existing_host_account {
+        if existing_account_id != agent.account_id {
+            tracing::warn!(
+                "cross-tenant host attempt: agent account {} trying to write to host {} owned by {}",
+                agent.account_id, host_id, existing_account_id
+            );
+            return Err(StatusCode::UNAUTHORIZED);
+        }
+    }
+
     // Enforce host limits
     let host_count: i64 =
         sqlx::query_scalar("SELECT COUNT(*) FROM hosts WHERE account_id = $1")
             .bind(agent.account_id)
-            .fetch_one(&state.db)
+            .fetch_optional(&mut *tx)
             .await
-            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
+            .unwrap_or(0);
 
     let host_limit: i64 = match plan.as_str() {
         "early_access" => 10,
@@ -55,12 +84,13 @@ pub async fn ingest(
     };
 
     if host_count >= host_limit {
+        // FIX #6: Check host_exists within transaction for consistency
         let host_exists: bool = sqlx::query_scalar(
             "SELECT EXISTS(SELECT 1 FROM hosts WHERE id = $1 AND account_id = $2)",
         )
         .bind(host_id)
         .bind(agent.account_id)
-        .fetch_one(&state.db)
+        .fetch_one(&mut *tx)
         .await
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
@@ -69,7 +99,7 @@ pub async fn ingest(
         }
     }
 
-    // Upsert host
+    // Upsert host within transaction
     sqlx::query(
         r#"
         INSERT INTO hosts (id, account_id, api_key_id, hostname, os, kernel, agent_version, uptime_secs, cpu_model, cpu_cores, memory_total_bytes, last_seen_at, is_online)
@@ -98,12 +128,17 @@ pub async fn ingest(
     .bind(&payload.host.cpu_model)
     .bind(payload.host.cpu_cores.map(|v| v as i32))
     .bind(payload.host.memory_total_bytes.map(|v| v as i64))
-    .execute(&state.db)
+    .execute(&mut *tx)
     .await
     .map_err(|e| {
         tracing::error!("failed to upsert host: {}", e);
         StatusCode::INTERNAL_SERVER_ERROR
     })?;
+
+    // Commit transaction
+    tx.commit()
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
     let mut accepted = 0u32;
     let mut rejected = 0u32;

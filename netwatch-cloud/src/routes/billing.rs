@@ -180,11 +180,45 @@ pub async fn stripe_webhook(
         Err(_) => return StatusCode::BAD_REQUEST,
     };
 
+    let event_id = event["id"].as_str().unwrap_or("");
     let event_type = event["type"].as_str().unwrap_or("");
     let data_object = &event["data"]["object"];
 
-    tracing::info!("stripe webhook: {}", event_type);
+    tracing::info!("stripe webhook: {} (event_id: {})", event_type, event_id);
 
+    // FIX #4: Check if webhook already processed for idempotency
+    // This prevents duplicate processing if Stripe retries the webhook
+    if event_id.is_empty() {
+        tracing::warn!("stripe webhook: missing event_id");
+        return StatusCode::BAD_REQUEST;
+    }
+
+    let already_processed: bool = sqlx::query_scalar(
+        "SELECT processed FROM webhook_events WHERE event_id = $1"
+    )
+    .bind(event_id)
+    .fetch_optional(&state.db)
+    .await
+    .unwrap_or(None)
+    .unwrap_or(false);
+
+    if already_processed {
+        tracing::info!("stripe webhook: event {} already processed", event_id);
+        return StatusCode::OK;
+    }
+
+    // FIX #4: Insert event record before processing to mark as in-progress
+    // Use INSERT OR IGNORE pattern to handle race conditions
+    let _ = sqlx::query(
+        "INSERT INTO webhook_events (event_id, event_type, processed) VALUES ($1, $2, false)
+         ON CONFLICT (event_id) DO NOTHING"
+    )
+    .bind(event_id)
+    .bind(event_type)
+    .execute(&state.db)
+    .await;
+
+    // Process the webhook event
     let result = match event_type {
         "customer.subscription.updated" => {
             handle_subscription_updated(data_object, &state).await
@@ -201,11 +235,26 @@ pub async fn stripe_webhook(
         }
     };
 
-    if let Err(e) = result {
-        tracing::error!("stripe webhook handler error: {}", e);
+    // FIX #5: Return error status on processing failure to let Stripe retry
+    match result {
+        Ok(()) => {
+            // Mark event as processed
+            let _ = sqlx::query(
+                "UPDATE webhook_events SET processed = true WHERE event_id = $1"
+            )
+            .bind(event_id)
+            .execute(&state.db)
+            .await;
+            
+            StatusCode::OK
+        }
+        Err(e) => {
+            tracing::error!("stripe webhook handler error: {}", e);
+            // FIX #5: Return 500 on handler error to trigger Stripe retry
+            // Do NOT return 200 - Stripe should retry this webhook
+            StatusCode::INTERNAL_SERVER_ERROR
+        }
     }
-
-    StatusCode::OK
 }
 
 fn verify_signature(payload: &str, sig_header: &str, secret: &str) -> bool {

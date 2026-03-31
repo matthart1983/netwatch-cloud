@@ -78,6 +78,23 @@ pub fn verify_token(token: &str, secret: &str) -> Result<Claims, jsonwebtoken::e
     Ok(token_data.claims)
 }
 
+/// FIX #1: Verify access token - checks token_type == "access"
+/// Prevents token type confusion attacks where refresh tokens are used as access tokens
+pub fn verify_access_token(token: &str, secret: &str) -> Result<Claims, jsonwebtoken::errors::Error> {
+    let claims = verify_token(token, secret)?;
+    
+    // Ensure it's actually an access token
+    if !matches!(claims.token_type, TokenType::Access) {
+        return Err(jsonwebtoken::errors::Error::from(
+            jsonwebtoken::errors::ErrorKind::InvalidToken,
+        ));
+    }
+    
+    Ok(claims)
+}
+
+/// FIX #1: Verify refresh token - checks token_type == "refresh"
+/// Prevents token type confusion attacks where access tokens are used as refresh tokens
 pub fn verify_refresh_token(token: &str, secret: &str) -> Result<Claims, jsonwebtoken::errors::Error> {
     let claims = verify_token(token, secret)?;
     
@@ -113,7 +130,9 @@ impl FromRequestParts<Arc<AppState>> for AuthUser {
             .strip_prefix("Bearer ")
             .ok_or(StatusCode::UNAUTHORIZED)?;
 
-        let claims = verify_token(token, &state.config.jwt_secret)
+        // FIX #1: Use verify_access_token to ensure token_type == "access"
+        // This prevents refresh tokens from being used as access tokens
+        let claims = verify_access_token(token, &state.config.jwt_secret)
             .map_err(|_| StatusCode::UNAUTHORIZED)?;
 
         Ok(AuthUser {
@@ -145,8 +164,10 @@ impl FromRequestParts<Arc<AppState>> for AgentAuth {
             .strip_prefix("Bearer ")
             .ok_or(StatusCode::UNAUTHORIZED)?;
 
-        // Extract prefix for lookup
-        if api_key.len() < 12 || !api_key.starts_with("nw_ak_") {
+        // FIX #2: Validate API key minimum length before substring extraction
+        // API key format: "nw_ak_" (6 bytes) + 32 random chars = 38 bytes minimum
+        // We extract 14 chars (6 prefix + 8 random for the DB lookup prefix)
+        if api_key.len() < 14 || !api_key.starts_with("nw_ak_") {
             return Err(StatusCode::UNAUTHORIZED);
         }
         let prefix = &api_key[..14]; // "nw_ak_" + 8 chars
