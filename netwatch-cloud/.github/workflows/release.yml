@@ -108,10 +108,10 @@ jobs:
         run: |
           if [ "${{ runner.os }}" = "Windows" ]; then
             cp "target/${{ matrix.target }}/release/${{ matrix.binary_name }}" \
-               "netwatch-agent-${{ steps.version.outputs.VERSION }}-${{ matrix.target }}.exe"
+               "netwatch-cloud-${{ steps.version.outputs.VERSION }}-${{ matrix.target }}.exe"
           else
             cp "target/${{ matrix.target }}/release/${{ matrix.binary_name }}" \
-               "netwatch-agent-${{ steps.version.outputs.VERSION }}-${{ matrix.target }}"
+               "netwatch-cloud-${{ steps.version.outputs.VERSION }}-${{ matrix.target }}"
           fi
         shell: bash
 
@@ -119,10 +119,10 @@ jobs:
         id: checksum
         run: |
           if [ "${{ runner.os }}" = "Windows" ]; then
-            FILE="netwatch-agent-${{ steps.version.outputs.VERSION }}-${{ matrix.target }}.exe"
+            FILE="netwatch-cloud-${{ steps.version.outputs.VERSION }}-${{ matrix.target }}.exe"
             CHECKSUM=$(certutil -hashfile "$FILE" SHA256 | findstr /R "^[a-fA-F0-9]" | cut -d' ' -f1)
           else
-            FILE="netwatch-agent-${{ steps.version.outputs.VERSION }}-${{ matrix.target }}"
+            FILE="netwatch-cloud-${{ steps.version.outputs.VERSION }}-${{ matrix.target }}"
             CHECKSUM=$(shasum -a 256 "$FILE" | cut -d' ' -f1)
           fi
           echo "CHECKSUM=$CHECKSUM" >> $GITHUB_OUTPUT
@@ -134,7 +134,7 @@ jobs:
         with:
           name: binaries-${{ matrix.target }}
           path: |
-            netwatch-agent-${{ steps.version.outputs.VERSION }}-${{ matrix.target }}*
+            netwatch-cloud-${{ steps.version.outputs.VERSION }}-${{ matrix.target }}*
             checksum.txt
           retention-days: 1
 
