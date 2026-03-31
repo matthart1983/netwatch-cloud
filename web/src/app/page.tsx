@@ -1,13 +1,14 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import Link from 'next/link'
 import { useAuth } from '@/lib/auth'
 import { getHosts, getMetrics, Host, MetricPoint, getBilling, BillingInfo } from '@/lib/api'
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts'
 import {
   Activity, Radar, Bell, BarChart3, Monitor, RefreshCw,
-  Shield, Lock, Eye, ChevronRight, Zap, X, Check
+  Shield, Lock, Unlock, Eye, ChevronRight, ChevronUp, ChevronDown, Zap, X, Check,
+  GripVertical, Maximize2, Minimize2, RotateCcw,
 } from 'lucide-react'
 
 function formatBytes(bytes: number): string {
@@ -803,62 +804,162 @@ const FLEET_CHARTS: FleetChartConfig[] = [
   { title: 'Connections', extract: p => p.connection_count, unit: '' },
 ]
 
-function FleetCharts({ hosts, hostPoints }: { hosts: Host[]; hostPoints: Record<string, MetricPoint[]> }) {
-  const charts = FLEET_CHARTS.map((cfg) => {
-    const isMulti = !!cfg.multiExtract
-    const timeMap = new Map<string, Record<string, unknown>>()
+const FLEET_LS_KEY = 'fleet-dashboard-state-v1'
 
-    hosts.forEach((host, hostIdx) => {
-      const points = hostPoints[host.id] || []
-      for (const p of points) {
-        const t = new Date(p.time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-        if (!timeMap.has(t)) timeMap.set(t, { time: t } as Record<string, unknown>)
-        const row = timeMap.get(t)!
-        if (isMulti) {
-          for (const series of cfg.multiExtract!) {
-            const val = series.extract(p)
-            if (val != null) row[`h${hostIdx}_${series.suffix}`] = Math.round(val * 100) / 100
-          }
-        } else {
-          const val = cfg.extract(p)
-          if (val != null) row[`h${hostIdx}`] = Math.round(val * 100) / 100
+interface FleetDashState { collapsed: Record<string, boolean>; order: string[] }
+
+function loadFleetDashState(): FleetDashState {
+  if (typeof window === 'undefined') return { collapsed: {}, order: [] }
+  try {
+    const raw = localStorage.getItem(FLEET_LS_KEY)
+    if (raw) {
+      const parsed = JSON.parse(raw)
+      return { collapsed: parsed.collapsed || {}, order: parsed.order || [] }
+    }
+  } catch {}
+  return { collapsed: {}, order: [] }
+}
+
+function saveFleetDashState(state: FleetDashState) {
+  try { localStorage.setItem(FLEET_LS_KEY, JSON.stringify(state)) } catch {}
+}
+
+function buildFleetChartData(cfg: FleetChartConfig, hosts: Host[], hostPoints: Record<string, MetricPoint[]>) {
+  const isMulti = !!cfg.multiExtract
+  const timeMap = new Map<string, Record<string, unknown>>()
+
+  hosts.forEach((host, hostIdx) => {
+    const points = hostPoints[host.id] || []
+    for (const p of points) {
+      const t = new Date(p.time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+      if (!timeMap.has(t)) timeMap.set(t, { time: t } as Record<string, unknown>)
+      const row = timeMap.get(t)!
+      if (isMulti) {
+        for (const series of cfg.multiExtract!) {
+          const val = series.extract(p)
+          if (val != null) row[`h${hostIdx}_${series.suffix}`] = Math.round(val * 100) / 100
         }
+      } else {
+        const val = cfg.extract(p)
+        if (val != null) row[`h${hostIdx}`] = Math.round(val * 100) / 100
+      }
+    }
+  })
+
+  const data = Array.from(timeMap.values()).sort((a, b) =>
+    String(a.time).localeCompare(String(b.time))
+  )
+
+  const lines: { key: string; stroke: string; name: string; dashed?: boolean }[] = []
+  if (isMulti) {
+    hosts.forEach((host, i) => {
+      for (const series of cfg.multiExtract!) {
+        lines.push({
+          key: `h${i}_${series.suffix}`,
+          stroke: HOST_COLORS[i % HOST_COLORS.length],
+          name: `${host.hostname} ${series.suffix}`,
+          dashed: series.dashed,
+        })
       }
     })
+  } else {
+    hosts.forEach((host, i) => {
+      lines.push({ key: `h${i}`, stroke: HOST_COLORS[i % HOST_COLORS.length], name: host.hostname })
+    })
+  }
 
-    const data = Array.from(timeMap.values()).sort((a, b) =>
-      String(a.time).localeCompare(String(b.time))
-    )
+  return { data, lines }
+}
 
-    if (data.length === 0) return null
+function FleetChartPanel({ cfg, hosts, hostPoints, isCollapsed, isLocked, onToggleCollapse, onMaximize }: {
+  cfg: FleetChartConfig
+  hosts: Host[]
+  hostPoints: Record<string, MetricPoint[]>
+  isCollapsed: boolean
+  isLocked: boolean
+  onToggleCollapse: () => void
+  onMaximize: () => void
+}) {
+  const { data, lines } = useMemo(() => buildFleetChartData(cfg, hosts, hostPoints), [cfg, hosts, hostPoints])
+  if (data.length === 0) return null
 
-    // Build lines
-    const lines: { key: string; stroke: string; name: string; dashed?: boolean }[] = []
-    if (isMulti) {
-      hosts.forEach((host, i) => {
-        for (const series of cfg.multiExtract!) {
-          lines.push({
-            key: `h${i}_${series.suffix}`,
-            stroke: HOST_COLORS[i % HOST_COLORS.length],
-            name: `${host.hostname} ${series.suffix}`,
-            dashed: series.dashed,
-          })
-        }
-      })
-    } else {
-      hosts.forEach((host, i) => {
-        lines.push({ key: `h${i}`, stroke: HOST_COLORS[i % HOST_COLORS.length], name: host.hostname })
-      })
-    }
+  return (
+    <div className="bg-zinc-900 border border-zinc-800 rounded-lg h-full flex flex-col overflow-hidden">
+      <div className="flex items-center gap-2 px-3 py-2 border-b border-zinc-800/50 shrink-0">
+        {!isLocked && (
+          <GripVertical size={14} className="text-zinc-600 hover:text-zinc-400 cursor-grab active:cursor-grabbing shrink-0" />
+        )}
+        <h3 className="text-sm font-medium text-zinc-300 truncate">{cfg.title}</h3>
+        <div className="flex items-center gap-1 ml-auto shrink-0">
+          <button onClick={onMaximize} className="p-1 text-zinc-600 hover:text-zinc-300 transition-colors" title="Maximize">
+            <Maximize2 size={13} />
+          </button>
+          <button onClick={onToggleCollapse} className="p-1 text-zinc-600 hover:text-zinc-300 transition-colors" title={isCollapsed ? 'Expand' : 'Collapse'}>
+            {isCollapsed ? <ChevronDown size={13} /> : <ChevronUp size={13} />}
+          </button>
+        </div>
+      </div>
+      {!isCollapsed && (
+        <div className="flex-1 min-h-0 p-2" style={{ minHeight: 140 }}>
+          <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={120}>
+            <LineChart data={data} syncId="fleet-dashboard">
+              <CartesianGrid strokeDasharray="3 3" stroke="#333" />
+              <XAxis dataKey="time" stroke="#666" tick={{ fontSize: 10 }} interval="preserveStartEnd" />
+              <YAxis stroke="#666" tick={{ fontSize: 10 }} domain={cfg.yDomain} />
+              <Tooltip contentStyle={TOOLTIP_STYLE} />
+              {lines.map(line => (
+                <Line
+                  key={line.key}
+                  dataKey={line.key}
+                  stroke={line.stroke}
+                  dot={false}
+                  connectNulls
+                  strokeWidth={1.5}
+                  strokeDasharray={line.dashed ? '5 3' : undefined}
+                  name={line.name}
+                />
+              ))}
+            </LineChart>
+          </ResponsiveContainer>
+        </div>
+      )}
+    </div>
+  )
+}
 
-    return (
-      <div key={cfg.title} className="bg-zinc-900 border border-zinc-800 rounded-lg p-4" style={{ height: 240 }}>
-        <h3 className="text-sm font-medium text-zinc-300 mb-2">{cfg.title}</h3>
-        <ResponsiveContainer width="100%" height="85%" minWidth={0} minHeight={140}>
-          <LineChart data={data}>
+function FleetMaximizedOverlay({ cfg, hosts, hostPoints, onClose }: {
+  cfg: FleetChartConfig; hosts: Host[]; hostPoints: Record<string, MetricPoint[]>; onClose: () => void
+}) {
+  const { data, lines } = useMemo(() => buildFleetChartData(cfg, hosts, hostPoints), [cfg, hosts, hostPoints])
+
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
+  }, [onClose])
+
+  return (
+    <div className="fixed inset-0 z-30 bg-zinc-950/98 flex flex-col" onClick={onClose}>
+      <div className="flex items-center gap-3 px-6 py-4 border-b border-zinc-800 shrink-0" onClick={e => e.stopPropagation()}>
+        <h2 className="text-lg font-semibold text-zinc-200">{cfg.title}</h2>
+        <div className="flex items-center gap-3 ml-4 flex-wrap">
+          {hosts.map((host, i) => (
+            <span key={host.id} className="flex items-center gap-1.5 text-xs text-zinc-400">
+              <span className="w-3 h-0.5 rounded" style={{ background: HOST_COLORS[i % HOST_COLORS.length] }} />
+              {host.hostname}
+            </span>
+          ))}
+        </div>
+        <button onClick={onClose} className="ml-auto p-2 text-zinc-400 hover:text-zinc-100 transition-colors" title="Close (Escape)">
+          <Minimize2 size={18} />
+        </button>
+      </div>
+      <div className="flex-1 p-6" onClick={e => e.stopPropagation()}>
+        <ResponsiveContainer width="100%" height="100%">
+          <LineChart data={data} syncId="fleet-dashboard">
             <CartesianGrid strokeDasharray="3 3" stroke="#333" />
-            <XAxis dataKey="time" stroke="#666" tick={{ fontSize: 10 }} interval="preserveStartEnd" />
-            <YAxis stroke="#666" tick={{ fontSize: 10 }} domain={cfg.yDomain} />
+            <XAxis dataKey="time" stroke="#666" tick={{ fontSize: 12 }} interval="preserveStartEnd" />
+            <YAxis stroke="#666" tick={{ fontSize: 12 }} domain={cfg.yDomain} />
             <Tooltip contentStyle={TOOLTIP_STYLE} />
             {lines.map(line => (
               <Line
@@ -867,7 +968,7 @@ function FleetCharts({ hosts, hostPoints }: { hosts: Host[]; hostPoints: Record<
                 stroke={line.stroke}
                 dot={false}
                 connectNulls
-                strokeWidth={1.5}
+                strokeWidth={2}
                 strokeDasharray={line.dashed ? '5 3' : undefined}
                 name={line.name}
               />
@@ -875,15 +976,102 @@ function FleetCharts({ hosts, hostPoints }: { hosts: Host[]; hostPoints: Record<
           </LineChart>
         </ResponsiveContainer>
       </div>
-    )
-  })
+    </div>
+  )
+}
 
-  const validCharts = charts.filter(Boolean)
-  if (validCharts.length === 0) return null
+function FleetCharts({ hosts, hostPoints }: { hosts: Host[]; hostPoints: Record<string, MetricPoint[]> }) {
+  const [dashState, setDashState] = useState<FleetDashState>(() => loadFleetDashState())
+  const [locked, setLocked] = useState(false)
+  const [maximizedIdx, setMaximizedIdx] = useState<number | null>(null)
+  const [dragOver, setDragOver] = useState<string | null>(null)
+  const dragItem = useRef<string | null>(null)
+
+  const defaultOrder = FLEET_CHARTS.map((_, i) => String(i))
+  const panelOrder = useMemo(() => {
+    if (dashState.order.length === 0) return defaultOrder
+    const ordered = dashState.order.filter(id => defaultOrder.includes(id))
+    for (const id of defaultOrder) {
+      if (!ordered.includes(id)) ordered.push(id)
+    }
+    return ordered
+  }, [dashState.order, defaultOrder])
+
+  const updateDashState = useCallback((updater: (prev: FleetDashState) => FleetDashState) => {
+    setDashState(prev => {
+      const next = updater(prev)
+      saveFleetDashState(next)
+      return next
+    })
+  }, [])
+
+  const toggleCollapse = useCallback((id: string) => {
+    updateDashState(prev => ({
+      ...prev,
+      collapsed: { ...prev.collapsed, [id]: !prev.collapsed[id] },
+    }))
+  }, [updateDashState])
+
+  const resetLayout = useCallback(() => {
+    setLocked(false)
+    updateDashState(() => ({ collapsed: {}, order: [] }))
+  }, [updateDashState])
+
+  const handleDragStart = useCallback((id: string) => { dragItem.current = id }, [])
+  const handleDragOver = useCallback((e: React.DragEvent, id: string) => {
+    e.preventDefault()
+    if (dragItem.current && dragItem.current !== id) setDragOver(id)
+  }, [])
+  const handleDrop = useCallback((id: string) => {
+    const from = dragItem.current
+    if (!from || from === id) { setDragOver(null); return }
+    updateDashState(prev => {
+      const order = [...(prev.order.length > 0 ? prev.order : defaultOrder)]
+      const fromIdx = order.indexOf(from)
+      const toIdx = order.indexOf(id)
+      if (fromIdx === -1 || toIdx === -1) return prev
+      order.splice(fromIdx, 1)
+      order.splice(toIdx, 0, from)
+      return { ...prev, order }
+    })
+    dragItem.current = null
+    setDragOver(null)
+  }, [updateDashState, defaultOrder])
+  const handleDragEnd = useCallback(() => { dragItem.current = null; setDragOver(null) }, [])
+
+  // Check if any charts have data
+  const hasData = FLEET_CHARTS.some(cfg => {
+    const { data } = buildFleetChartData(cfg, hosts, hostPoints)
+    return data.length > 0
+  })
+  if (!hasData) return null
 
   return (
     <div className="mt-8">
-      <h2 className="text-lg font-bold mb-4">Fleet Metrics</h2>
+      <div className="flex items-center justify-between mb-4">
+        <h2 className="text-lg font-bold">Fleet Metrics</h2>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setLocked(prev => !prev)}
+            className={`flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-medium border transition-colors ${
+              locked ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30' : 'bg-zinc-800 text-zinc-400 hover:text-zinc-100 border-zinc-700'
+            }`}
+            title={locked ? 'Unlock layout' : 'Lock layout'}
+          >
+            {locked ? <Lock size={12} /> : <Unlock size={12} />}
+            {locked ? 'Locked' : 'Unlocked'}
+          </button>
+          <button
+            onClick={resetLayout}
+            className="flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-medium bg-zinc-800 text-zinc-400 hover:text-zinc-100 border border-zinc-700 transition-colors"
+            title="Reset all panels"
+          >
+            <RotateCcw size={12} />
+            Reset
+          </button>
+        </div>
+      </div>
+
       <div className="flex items-center gap-3 mb-4 flex-wrap">
         {hosts.map((host, i) => (
           <span key={host.id} className="flex items-center gap-1.5 text-xs text-zinc-400">
@@ -892,9 +1080,45 @@ function FleetCharts({ hosts, hostPoints }: { hosts: Host[]; hostPoints: Record<
           </span>
         ))}
       </div>
+
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-        {validCharts}
+        {panelOrder.map(panelId => {
+          const idx = parseInt(panelId)
+          const cfg = FLEET_CHARTS[idx]
+          if (!cfg) return null
+          return (
+            <div
+              key={panelId}
+              className={dragOver === panelId ? 'ring-2 ring-emerald-500/50 rounded-lg' : ''}
+              style={{ height: dashState.collapsed[panelId] ? 'auto' : 240 }}
+              draggable={!locked}
+              onDragStart={() => handleDragStart(panelId)}
+              onDragOver={(e) => handleDragOver(e, panelId)}
+              onDrop={() => handleDrop(panelId)}
+              onDragEnd={handleDragEnd}
+            >
+              <FleetChartPanel
+                cfg={cfg}
+                hosts={hosts}
+                hostPoints={hostPoints}
+                isCollapsed={!!dashState.collapsed[panelId]}
+                isLocked={locked}
+                onToggleCollapse={() => toggleCollapse(panelId)}
+                onMaximize={() => setMaximizedIdx(idx)}
+              />
+            </div>
+          )
+        })}
       </div>
+
+      {maximizedIdx != null && FLEET_CHARTS[maximizedIdx] && (
+        <FleetMaximizedOverlay
+          cfg={FLEET_CHARTS[maximizedIdx]}
+          hosts={hosts}
+          hostPoints={hostPoints}
+          onClose={() => setMaximizedIdx(null)}
+        />
+      )}
     </div>
   )
 }
