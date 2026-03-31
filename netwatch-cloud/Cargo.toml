@@ -22,3 +22,5 @@ ureq = { version = "2", features = ["json"] }
 
 [build-dependencies]
 chrono = "0.4"
+
+# Force rebuild: stripe billing integration 2026-03-31
