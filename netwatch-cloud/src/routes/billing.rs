@@ -7,9 +7,14 @@ use axum::{
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
+use hmac::{Hmac, Mac};
+use sha2::Sha256;
+use std::time::SystemTime;
 
 use crate::auth::AuthUser;
 use crate::AppState;
+
+type HmacSha256 = Hmac<Sha256>;
 
 // --- Account GET/PUT ---
 
@@ -203,19 +208,90 @@ pub async fn stripe_webhook(
     StatusCode::OK
 }
 
-fn verify_signature(_payload: &str, sig_header: &str, _secret: &str) -> bool {
-    // Verify the header at least has the expected format
-    let has_timestamp = sig_header.contains("t=");
-    let has_signature = sig_header.contains("v1=");
+fn verify_signature(payload: &str, sig_header: &str, secret: &str) -> bool {
+    // Parse signature header: t=<timestamp>,v1=<signature>,v1=<signature>...
+    let mut timestamp: Option<u64> = None;
+    let mut signatures: Vec<String> = Vec::new();
 
-    if !has_timestamp || !has_signature {
+    for part in sig_header.split(',') {
+        let trimmed = part.trim();
+        if let Some(ts) = trimmed.strip_prefix("t=") {
+            if let Ok(t) = ts.parse::<u64>() {
+                timestamp = Some(t);
+            }
+        } else if let Some(sig) = trimmed.strip_prefix("v1=") {
+            signatures.push(sig.to_string());
+        }
+    }
+
+    // Extract timestamp or reject
+    let timestamp = match timestamp {
+        Some(t) => t,
+        None => {
+            tracing::warn!("stripe webhook: missing timestamp in signature header");
+            return false;
+        }
+    };
+
+    // Check timestamp is within 5 minutes (prevent replay attacks)
+    let now = match SystemTime::now().duration_since(SystemTime::UNIX_EPOCH) {
+        Ok(d) => d.as_secs(),
+        Err(_) => {
+            tracing::error!("stripe webhook: system time error");
+            return false;
+        }
+    };
+
+    let time_diff = if now > timestamp { now - timestamp } else { timestamp - now };
+    if time_diff > 300 {
+        // 300 seconds = 5 minutes
+        tracing::warn!(
+            "stripe webhook: timestamp too old or in future (diff: {} seconds)",
+            time_diff
+        );
         return false;
     }
 
-    // TODO: Add hmac + sha2 crates for cryptographic signature verification.
-    // For now we validate the header format and rely on the webhook URL being secret.
-    tracing::warn!("stripe webhook: signature format valid, cryptographic verification pending (add hmac/sha2 crates)");
-    true
+    // Reject if no valid signatures found
+    if signatures.is_empty() {
+        tracing::warn!("stripe webhook: no v1 signatures found in header");
+        return false;
+    }
+
+    // Reconstruct signed content: "<timestamp>.<payload>"
+    let signed_content = format!("{}.{}", timestamp, payload);
+
+    // Try to verify with any of the provided signatures
+    for sig_hex in signatures {
+        // Decode the hex-encoded signature
+        let signature = match hex::decode(&sig_hex) {
+            Ok(s) => s,
+            Err(_) => {
+                tracing::debug!("stripe webhook: failed to decode signature hex: {}", sig_hex);
+                continue;
+            }
+        };
+
+        // Compute HMAC-SHA256
+        let mut mac = match HmacSha256::new_from_slice(secret.as_bytes()) {
+            Ok(m) => m,
+            Err(_) => {
+                tracing::error!("stripe webhook: failed to create HMAC");
+                return false;
+            }
+        };
+
+        mac.update(signed_content.as_bytes());
+
+        // Constant-time comparison to prevent timing attacks
+        if mac.verify_slice(&signature).is_ok() {
+            tracing::debug!("stripe webhook: signature verified successfully");
+            return true;
+        }
+    }
+
+    tracing::warn!("stripe webhook: no valid signatures found");
+    false
 }
 
 async fn handle_subscription_updated(

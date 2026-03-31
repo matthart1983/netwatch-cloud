@@ -79,5 +79,14 @@ pub struct SystemMetric {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct IngestResponse {
     pub accepted: u32,
+    pub rejected: u32,
     pub host_id: Uuid,
+    pub results: Vec<SnapshotResult>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SnapshotResult {
+    pub index: usize,
+    pub status: u16,
+    pub message: String,
 }

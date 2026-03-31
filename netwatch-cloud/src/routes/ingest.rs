@@ -1,5 +1,5 @@
-use axum::{extract::State, http::StatusCode, Json};
-use netwatch_core::types::{IngestRequest, IngestResponse};
+use axum::{extract::State, http::StatusCode, Json, response::{IntoResponse, Response}};
+use netwatch_core::types::{IngestRequest, IngestResponse, SnapshotResult};
 use std::sync::Arc;
 use tracing::info;
 
@@ -10,7 +10,7 @@ pub async fn ingest(
     agent: AgentAuth,
     State(state): State<Arc<AppState>>,
     Json(payload): Json<IngestRequest>,
-) -> Result<Json<IngestResponse>, StatusCode> {
+) -> Result<Response, StatusCode> {
     if payload.snapshots.is_empty() {
         return Err(StatusCode::BAD_REQUEST);
     }
@@ -106,10 +106,12 @@ pub async fn ingest(
     })?;
 
     let mut accepted = 0u32;
+    let mut rejected = 0u32;
+    let mut results: Vec<SnapshotResult> = Vec::new();
 
-    for snapshot in &payload.snapshots {
+    for (index, snapshot) in payload.snapshots.iter().enumerate() {
         // Insert snapshot
-        let snapshot_id: i64 = sqlx::query_scalar(
+        let snapshot_id = match sqlx::query_scalar::<_, i64>(
             r#"
             INSERT INTO snapshots (host_id, time, connection_count, gateway_ip, gateway_rtt_ms, gateway_loss_pct, dns_ip, dns_rtt_ms, dns_loss_pct, cpu_usage_pct, memory_total_bytes, memory_used_bytes, memory_available_bytes, load_avg_1m, load_avg_5m, load_avg_15m, swap_total_bytes, swap_used_bytes, disk_read_bytes, disk_write_bytes, tcp_time_wait, tcp_close_wait, cpu_per_core)
             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23)
@@ -140,15 +142,24 @@ pub async fn ingest(
         .bind(snapshot.tcp_close_wait.map(|v| v as i32))
         .bind(snapshot.system.as_ref().and_then(|s| s.cpu_per_core.as_deref()))
         .fetch_one(&state.db)
-        .await
-        .map_err(|e| {
-            tracing::error!("failed to insert snapshot: {}", e);
-            StatusCode::INTERNAL_SERVER_ERROR
-        })?;
+        .await {
+            Ok(id) => id,
+            Err(e) => {
+                tracing::error!("failed to insert snapshot {}: {}", index, e);
+                results.push(SnapshotResult {
+                    index,
+                    status: 400,
+                    message: "Failed to insert snapshot".to_string(),
+                });
+                rejected += 1;
+                continue;
+            }
+        };
 
         // Insert interface metrics
+        let mut iface_error = false;
         for iface in &snapshot.interfaces {
-            sqlx::query(
+            if let Err(e) = sqlx::query(
                 r#"
                 INSERT INTO interface_metrics (snapshot_id, host_id, time, name, is_up, rx_bytes_total, tx_bytes_total, rx_bytes_delta, tx_bytes_delta, rx_packets, tx_packets, rx_errors, tx_errors, rx_drops, tx_drops)
                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
@@ -170,17 +181,28 @@ pub async fn ingest(
             .bind(iface.rx_drops as i64)
             .bind(iface.tx_drops as i64)
             .execute(&state.db)
-            .await
-            .map_err(|e| {
-                tracing::error!("failed to insert interface metric: {}", e);
-                StatusCode::INTERNAL_SERVER_ERROR
-            })?;
+            .await {
+                tracing::error!("failed to insert interface metric for snapshot {}: {}", index, e);
+                iface_error = true;
+                break;
+            }
+        }
+
+        if iface_error {
+            results.push(SnapshotResult {
+                index,
+                status: 400,
+                message: "Failed to insert interface metrics".to_string(),
+            });
+            rejected += 1;
+            continue;
         }
 
         // Insert disk metrics
+        let mut disk_error = false;
         if let Some(ref disks) = snapshot.disk_usage {
             for disk in disks {
-                sqlx::query(
+                if let Err(e) = sqlx::query(
                     r#"
                     INSERT INTO disk_metrics (snapshot_id, host_id, time, mount_point, device, total_bytes, used_bytes, available_bytes, usage_pct)
                     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
@@ -196,21 +218,53 @@ pub async fn ingest(
                 .bind(disk.available_bytes as i64)
                 .bind(disk.usage_pct)
                 .execute(&state.db)
-                .await
-                .map_err(|e| {
-                    tracing::error!("failed to insert disk metric: {}", e);
-                    StatusCode::INTERNAL_SERVER_ERROR
-                })?;
+                .await {
+                    tracing::error!("failed to insert disk metric for snapshot {}: {}", index, e);
+                    disk_error = true;
+                    break;
+                }
             }
         }
 
+        if disk_error {
+            results.push(SnapshotResult {
+                index,
+                status: 400,
+                message: "Failed to insert disk metrics".to_string(),
+            });
+            rejected += 1;
+            continue;
+        }
+
         accepted += 1;
+        results.push(SnapshotResult {
+            index,
+            status: 200,
+            message: "OK".to_string(),
+        });
     }
 
-    info!("ingested {} snapshots for host {}", accepted, host_id);
+    // Determine response status code
+    let response_status = if rejected > 0 && accepted > 0 {
+        // Partial success - 207 Multi-Status
+        StatusCode::MULTI_STATUS
+    } else if rejected == payload.snapshots.len() as u32 {
+        // All rejected - 400 Bad Request
+        StatusCode::BAD_REQUEST
+    } else {
+        // All accepted - 200 OK
+        StatusCode::OK
+    };
 
-    Ok(Json(IngestResponse {
+    info!("ingested {} snapshots for host {} ({} accepted, {} rejected)", payload.snapshots.len(), host_id, accepted, rejected);
+
+    let response = IngestResponse {
         accepted,
+        rejected,
         host_id,
-    }))
+        results,
+    };
+
+    // Return response with appropriate status code
+    Ok((response_status, Json(response)).into_response())
 }

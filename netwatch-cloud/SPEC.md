@@ -260,7 +260,7 @@ Download shell script for agent installation.
 ### Authentication Routes
 
 #### POST `/api/v1/auth/register`
-Create new account.
+Create new account and get initial token pair.
 
 **Rate Limit:** 3 per hour per IP
 
@@ -276,7 +276,9 @@ Create new account.
 ```json
 {
   "account_id": "uuid",
-  "token": "eyJhbGc..."
+  "api_key": "nw_ak_...",
+  "access_token": "eyJhbGc...",
+  "refresh_token": "eyJhbGc..."
 }
 ```
 
@@ -285,7 +287,7 @@ Create new account.
 - `409 Conflict` - Email already registered
 
 #### POST `/api/v1/auth/login`
-Authenticate user.
+Authenticate user and get token pair.
 
 **Rate Limit:** 5 per minute per IP
 
@@ -301,12 +303,44 @@ Authenticate user.
 ```json
 {
   "account_id": "uuid",
-  "token": "eyJhbGc..."
+  "access_token": "eyJhbGc...",
+  "refresh_token": "eyJhbGc..."
 }
 ```
 
 **Errors:**
 - `401 Unauthorized` - Invalid credentials
+
+#### POST `/api/v1/auth/refresh`
+Obtain new access token without re-authenticating.
+
+**Rate Limit:** 10 per minute per IP
+
+**Request:**
+```json
+{
+  "refresh_token": "eyJhbGc..."
+}
+```
+
+**Response (200):**
+```json
+{
+  "access_token": "eyJhbGc...",
+  "refresh_token": "eyJhbGc..."
+}
+```
+
+**Errors:**
+- `400 Bad Request` - Missing refresh_token
+- `401 Unauthorized` - Invalid or expired refresh token
+- `500 Internal Server Error` - Account not found
+
+**Notes:**
+- Returns a new refresh token with each call (token rotation)
+- Previous refresh token is implicitly invalidated
+- Access token expiration: 15 minutes
+- Refresh token expiration: 7 days
 
 ---
 
@@ -547,16 +581,53 @@ Ingest metrics from monitoring agent.
 - Maximum 100 snapshots per request
 - Billing plan enforced: must be active or within trial period
 
-**Response (200):**
+**Response (200) - All snapshots accepted:**
 ```json
 {
-  "accepted": 1,
-  "host_id": "uuid"
+  "accepted": 95,
+  "rejected": 0,
+  "host_id": "uuid",
+  "results": [
+    { "index": 0, "status": 200, "message": "OK" },
+    { "index": 1, "status": 200, "message": "OK" },
+    ...
+  ]
 }
 ```
 
-**Errors:**
-- `400 Bad Request` - Invalid request format or empty snapshots
+**Response (207) - Partial success (some snapshots rejected):**
+```json
+{
+  "accepted": 95,
+  "rejected": 5,
+  "host_id": "uuid",
+  "results": [
+    { "index": 0, "status": 200, "message": "OK" },
+    { "index": 5, "status": 400, "message": "Failed to insert snapshot" },
+    { "index": 10, "status": 400, "message": "Failed to insert interface metrics" },
+    { "index": 15, "status": 400, "message": "Failed to insert disk metrics" },
+    ...
+  ]
+}
+```
+
+**Response (400) - All snapshots rejected:**
+```json
+{
+  "accepted": 0,
+  "rejected": 100,
+  "host_id": "uuid",
+  "results": [
+    { "index": 0, "status": 400, "message": "Failed to insert snapshot" },
+    ...
+  ]
+}
+```
+
+**Status Codes:**
+- `200 OK` - All snapshots accepted
+- `207 Multi-Status` - Partial success (some snapshots rejected, some accepted)
+- `400 Bad Request` - All snapshots rejected OR invalid request format or empty snapshots
 - `413 Payload Too Large` - More than 100 snapshots
 - `401 Unauthorized` - Invalid API key
 - `402 Payment Required` - Account plan expired or host limit exceeded
@@ -975,12 +1046,31 @@ All queries are filtered by `account_id` to ensure complete data isolation betwe
 
 ### JWT (Web Users)
 
-- **Issued by:** `/api/v1/auth/register`, `/api/v1/auth/login`
+#### Access Token
+
+- **Issued by:** `/api/v1/auth/register`, `/api/v1/auth/login`, `/api/v1/auth/refresh`
 - **Format:** HS256 signed JWT
-- **Payload:** `{ sub: account_id, exp: unix_timestamp }`
-- **Expiration:** 30 minutes
-- **Storage:** Client-side (typically in browser localStorage)
-- **Transmission:** `Authorization: Bearer <token>`
+- **Payload:** `{ sub: account_id, token_type: "access", exp: unix_timestamp }`
+- **Expiration:** 15 minutes
+- **Storage:** Client-side (typically in browser localStorage or sessionStorage)
+- **Transmission:** `Authorization: Bearer <access_token>`
+- **Usage:** All authenticated REST API calls
+
+#### Refresh Token
+
+- **Issued by:** `/api/v1/auth/register`, `/api/v1/auth/login`, `/api/v1/auth/refresh`
+- **Format:** HS256 signed JWT
+- **Payload:** `{ sub: account_id, token_type: "refresh", exp: unix_timestamp }`
+- **Expiration:** 7 days
+- **Storage:** Client-side (typically in secure httpOnly cookie or localStorage)
+- **Transmission:** Request body (JSON) to `/api/v1/auth/refresh`
+- **Usage:** Obtain new access/refresh token pair without re-authenticating
+
+#### Token Rotation
+
+- Each call to `/api/v1/auth/refresh` returns a **new refresh token** (old one implicitly invalidated)
+- Prevents token replay attacks by issuing unique tokens per refresh cycle
+- Client must update stored refresh token on each refresh response
 
 ### API Keys (Agents)
 
@@ -1043,6 +1133,26 @@ All queries are filtered by `account_id` to ensure complete data isolation betwe
 ### Stripe Webhook Handler (`routes/billing.rs`)
 
 **Endpoint:** `POST /api/v1/webhooks/stripe`
+
+**Security:** HMAC-SHA256 signature verification enabled when `STRIPE_WEBHOOK_SECRET` is configured.
+
+**Signature Verification Details:**
+
+1. **Header Format:** `t=<timestamp>,v1=<signature>[,v1=<signature>...]`
+2. **Algorithm:** HMAC-SHA256 with webhook secret as key
+3. **Signed Content:** `"<timestamp>.<raw_request_body>"`
+4. **Timestamp Validation:** Must be within 5 minutes (prevents replay attacks)
+5. **Comparison:** Constant-time comparison to prevent timing attacks
+
+**Verification Process:**
+- Parse `stripe-signature` header for timestamp (`t=`) and signature(s) (`v1=`)
+- Validate timestamp is within 5-minute window
+- For each v1 signature:
+  - Decode hex-encoded signature
+  - Compute HMAC-SHA256(`secret`, `timestamp.payload`)
+  - Use constant-time comparison to verify
+- Reject if no valid signature found
+- Log all verification failures with context
 
 **Handled Events:**
 

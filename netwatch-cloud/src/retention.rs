@@ -2,6 +2,7 @@ use crate::AppState;
 use std::sync::Arc;
 use tokio::time::{interval, Duration};
 use tracing::{error, info};
+use uuid::Uuid;
 
 pub async fn run(state: Arc<AppState>) {
     let mut ticker = interval(Duration::from_secs(3600));
@@ -18,14 +19,40 @@ pub async fn run(state: Arc<AppState>) {
 }
 
 async fn cleanup_cycle(state: &Arc<AppState>) -> anyhow::Result<()> {
-    // Delete snapshots older than 72 hours (interface_metrics cascade via ON DELETE CASCADE)
-    let snapshots = sqlx::query("DELETE FROM snapshots WHERE time < now() - INTERVAL '72 hours'")
+    // Delete snapshots for expired accounts immediately
+    let expired = sqlx::query("DELETE FROM snapshots WHERE host_id IN (SELECT id FROM hosts WHERE account_id IN (SELECT id FROM accounts WHERE plan = 'expired'))")
         .execute(&state.db)
         .await?;
     info!(
-        "retention: deleted {} old snapshots",
-        snapshots.rows_affected()
+        "retention: deleted {} snapshots for expired accounts",
+        expired.rows_affected()
     );
+
+    // Clean up per-account snapshots based on retention_days
+    let accounts = sqlx::query_as::<_, (Uuid, i32)>(
+        "SELECT id, retention_days FROM accounts WHERE plan NOT IN ('expired')"
+    )
+    .fetch_all(&state.db)
+    .await?;
+
+    for (account_id, retention_days) in accounts {
+        let snapshots = sqlx::query(
+            "DELETE FROM snapshots WHERE host_id IN (SELECT id FROM hosts WHERE account_id = $1) AND time < now() - INTERVAL '1 days' * $2"
+        )
+        .bind(account_id)
+        .bind(retention_days)
+        .execute(&state.db)
+        .await?;
+
+        if snapshots.rows_affected() > 0 {
+            info!(
+                "retention: account {} ({}d): deleted {} snapshots",
+                account_id,
+                retention_days,
+                snapshots.rows_affected()
+            );
+        }
+    }
 
     // Delete alert events older than 30 days
     let events =

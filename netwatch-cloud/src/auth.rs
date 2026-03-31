@@ -9,20 +9,30 @@ use uuid::Uuid;
 
 use crate::AppState;
 
+#[derive(Debug, Serialize, Deserialize, Clone, Copy)]
+pub enum TokenType {
+    #[serde(rename = "access")]
+    Access,
+    #[serde(rename = "refresh")]
+    Refresh,
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Claims {
     pub sub: Uuid,
+    pub token_type: TokenType,
     pub exp: usize,
 }
 
-pub fn create_token(account_id: Uuid, secret: &str) -> Result<String, jsonwebtoken::errors::Error> {
+pub fn create_access_token(account_id: Uuid, secret: &str) -> Result<String, jsonwebtoken::errors::Error> {
     let exp = chrono::Utc::now()
-        .checked_add_signed(chrono::Duration::minutes(30))
+        .checked_add_signed(chrono::Duration::minutes(15))
         .unwrap()
         .timestamp() as usize;
 
     let claims = Claims {
         sub: account_id,
+        token_type: TokenType::Access,
         exp,
     };
 
@@ -33,6 +43,32 @@ pub fn create_token(account_id: Uuid, secret: &str) -> Result<String, jsonwebtok
     )
 }
 
+pub fn create_refresh_token(account_id: Uuid, secret: &str) -> Result<String, jsonwebtoken::errors::Error> {
+    let exp = chrono::Utc::now()
+        .checked_add_signed(chrono::Duration::days(7))
+        .unwrap()
+        .timestamp() as usize;
+
+    let claims = Claims {
+        sub: account_id,
+        token_type: TokenType::Refresh,
+        exp,
+    };
+
+    encode(
+        &Header::default(),
+        &claims,
+        &EncodingKey::from_secret(secret.as_bytes()),
+    )
+}
+
+/// Legacy function - now uses access token expiry
+#[deprecated(since = "0.1.0", note = "use create_access_token instead")]
+#[allow(dead_code)]
+pub fn create_token(account_id: Uuid, secret: &str) -> Result<String, jsonwebtoken::errors::Error> {
+    create_access_token(account_id, secret)
+}
+
 pub fn verify_token(token: &str, secret: &str) -> Result<Claims, jsonwebtoken::errors::Error> {
     let token_data = decode::<Claims>(
         token,
@@ -40,6 +76,19 @@ pub fn verify_token(token: &str, secret: &str) -> Result<Claims, jsonwebtoken::e
         &Validation::default(),
     )?;
     Ok(token_data.claims)
+}
+
+pub fn verify_refresh_token(token: &str, secret: &str) -> Result<Claims, jsonwebtoken::errors::Error> {
+    let claims = verify_token(token, secret)?;
+    
+    // Ensure it's actually a refresh token
+    if !matches!(claims.token_type, TokenType::Refresh) {
+        return Err(jsonwebtoken::errors::Error::from(
+            jsonwebtoken::errors::ErrorKind::InvalidToken,
+        ));
+    }
+    
+    Ok(claims)
 }
 
 /// Extractor for authenticated web users (JWT)

@@ -15,6 +15,8 @@ pub struct RegisterRequest {
 pub struct RegisterResponse {
     pub account_id: Uuid,
     pub api_key: String,
+    pub access_token: String,
+    pub refresh_token: String,
 }
 
 pub async fn register(
@@ -33,14 +35,16 @@ pub async fn register(
 
     let account_id = Uuid::new_v4();
     let trial_ends_at = chrono::Utc::now() + chrono::Duration::days(14);
+    let retention_days = 3; // trial plan: 72 hours (3 days)
 
     sqlx::query(
-        "INSERT INTO accounts (id, email, password_hash, trial_ends_at) VALUES ($1, $2, $3, $4)"
+        "INSERT INTO accounts (id, email, password_hash, trial_ends_at, retention_days) VALUES ($1, $2, $3, $4, $5)"
     )
     .bind(account_id)
     .bind(&req.email)
     .bind(&password_hash)
     .bind(trial_ends_at)
+    .bind(retention_days)
     .execute(&state.db)
     .await
     .map_err(|e| {
@@ -117,9 +121,17 @@ pub async fn register(
         .await;
     }
 
+    // Create tokens
+    let access_token = crate::auth::create_access_token(account_id, &state.config.jwt_secret)
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let refresh_token = crate::auth::create_refresh_token(account_id, &state.config.jwt_secret)
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
     Ok(Json(RegisterResponse {
         account_id,
         api_key: raw_key,
+        access_token,
+        refresh_token,
     }))
 }
 
@@ -131,8 +143,9 @@ pub struct LoginRequest {
 
 #[derive(Serialize)]
 pub struct LoginResponse {
-    pub token: String,
     pub account_id: Uuid,
+    pub access_token: String,
+    pub refresh_token: String,
 }
 
 pub async fn login(
@@ -154,10 +167,60 @@ pub async fn login(
         return Err(StatusCode::UNAUTHORIZED);
     }
 
-    let token = crate::auth::create_token(account_id, &state.config.jwt_secret)
+    let access_token = crate::auth::create_access_token(account_id, &state.config.jwt_secret)
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let refresh_token = crate::auth::create_refresh_token(account_id, &state.config.jwt_secret)
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
-    Ok(Json(LoginResponse { token, account_id }))
+    Ok(Json(LoginResponse { 
+        account_id, 
+        access_token, 
+        refresh_token,
+    }))
+}
+
+#[derive(Deserialize)]
+pub struct RefreshRequest {
+    pub refresh_token: String,
+}
+
+#[derive(Serialize)]
+pub struct RefreshResponse {
+    pub access_token: String,
+    pub refresh_token: String,
+}
+
+pub async fn refresh(
+    State(state): State<Arc<AppState>>,
+    Json(req): Json<RefreshRequest>,
+) -> Result<Json<RefreshResponse>, StatusCode> {
+    // Verify the refresh token
+    let claims = crate::auth::verify_refresh_token(&req.refresh_token, &state.config.jwt_secret)
+        .map_err(|_| StatusCode::UNAUTHORIZED)?;
+
+    let account_id = claims.sub;
+
+    // Verify the account still exists
+    let exists = sqlx::query_scalar::<_, bool>("SELECT EXISTS(SELECT 1 FROM accounts WHERE id = $1)")
+        .bind(account_id)
+        .fetch_one(&state.db)
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    if !exists {
+        return Err(StatusCode::UNAUTHORIZED);
+    }
+
+    // Generate new tokens with rotation
+    let new_access_token = crate::auth::create_access_token(account_id, &state.config.jwt_secret)
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let new_refresh_token = crate::auth::create_refresh_token(account_id, &state.config.jwt_secret)
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    Ok(Json(RefreshResponse {
+        access_token: new_access_token,
+        refresh_token: new_refresh_token,
+    }))
 }
 
 fn generate_random_string(len: usize) -> String {
