@@ -5,6 +5,10 @@ use netwatch_core::platform;
 use netwatch_core::types::{HealthMetric, InterfaceMetric, Snapshot, SystemMetric};
 use std::collections::HashMap;
 
+// v0.2.0 compatibility:
+// Server validates timestamp is within ±24 hours of server time.
+// We always use Utc::now() which is safe and recommended.
+
 pub struct MetricsCollector {
     prev_bytes: HashMap<String, (u64, u64)>,
     gateway: Option<String>,

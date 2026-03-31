@@ -11,6 +11,11 @@ mod update;
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 const GIT_HASH: &str = env!("GIT_HASH");
 
+// v0.2.0 compatibility:
+// Exponential backoff configuration for retrying failed sends
+const BASE_RETRY_DELAY: u64 = 5;  // 5 seconds
+const MAX_RETRY_DELAY: u64 = 300; // 5 minutes
+
 #[tokio::main]
 async fn main() -> Result<()> {
     let args: Vec<String> = std::env::args().collect();
@@ -79,12 +84,29 @@ async fn main() -> Result<()> {
             last_health = tokio::time::Instant::now();
         }
 
-        match sender.send(snapshot) {
-            Ok(()) => {
-                info!("snapshot sent");
-            }
-            Err(e) => {
-                warn!("send failed: {}, buffered ({} queued)", e, sender.buffer_len());
+        // v0.2.0: Retry with exponential backoff on transient failures
+        let mut retry_delay = BASE_RETRY_DELAY;
+        let mut send_succeeded = false;
+        
+        while !send_succeeded {
+            match sender.send(snapshot.clone()) {
+                Ok(()) => {
+                    info!("snapshot sent");
+                    send_succeeded = true;
+                }
+                Err(e) if e.contains("402") || e.contains("Single") || e.contains("billing") => {
+                    // 402: Account over limit / billing issue - don't retry
+                    // 413 Single: Single snapshot too large - don't retry
+                    warn!("Unrecoverable error: {}", e);
+                    send_succeeded = true; // Exit retry loop
+                }
+                Err(e) => {
+                    // Transient errors: network, 5xx, or 413 batch - retry with backoff
+                    warn!("Send failed, retrying in {}s: {} (buffered: {} queued)", 
+                          retry_delay, e, sender.buffer_len());
+                    tokio::time::sleep(Duration::from_secs(retry_delay)).await;
+                    retry_delay = (retry_delay * 2).min(MAX_RETRY_DELAY);
+                }
             }
         }
 
