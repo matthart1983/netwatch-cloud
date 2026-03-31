@@ -42,36 +42,30 @@ pub async fn ingest(
 
     let host_id = payload.host.host_id;
 
-    // Check for cross-tenant host overwrite: if host exists, verify it belongs to this account
-    let existing_host_account: Option<Uuid> = sqlx::query_scalar(
-        "SELECT account_id FROM hosts WHERE id = $1"
-    )
-    .bind(host_id)
-    .fetch_optional(&state.db)
-    .await
-    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-
-    if let Some(existing_account_id) = existing_host_account {
-        if existing_account_id != agent.account_id {
-            // Host exists but belongs to different account - reject
-            return Err(StatusCode::UNAUTHORIZED);
-        }
-    }
-
     // Enforce host limits with transactional consistency to prevent race conditions
     let host_limit: i64 = match plan.as_str() {
         "early_access" => 10,
         _ => 3,
     };
 
-    // Start transaction and use FOR UPDATE to lock the count
+    // BLOCKER 1 FIX: Lock the account row for the entire transaction
+    // This ensures all operations (host check, count check, host upsert) are atomic
     let mut tx = state.db.begin()
         .await
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
-    // Get count with FOR UPDATE lock (serialized count check)
+    // Lock the account row to prevent concurrent modifications
+    let _account_lock: (Uuid,) = sqlx::query_as(
+        "SELECT id FROM accounts WHERE id = $1 FOR UPDATE"
+    )
+    .bind(agent.account_id)
+    .fetch_one(&mut *tx)
+    .await
+    .map_err(|_| StatusCode::UNAUTHORIZED)?;
+
+    // Now safely check host count (within locked transaction)
     let host_count: i64 = sqlx::query_scalar(
-        "SELECT COUNT(*) FROM hosts WHERE account_id = $1 FOR UPDATE"
+        "SELECT COUNT(*) FROM hosts WHERE account_id = $1"
     )
     .bind(agent.account_id)
     .fetch_one(&mut *tx)
@@ -89,15 +83,12 @@ pub async fn ingest(
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
         if !host_exists {
+            tx.rollback().await.ok();
             return Err(StatusCode::PAYMENT_REQUIRED);
         }
     }
 
-    tx.commit()
-        .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-
-    // Upsert host
+    // Upsert host WITHIN transaction, with account_id check in ON CONFLICT
     sqlx::query(
         r#"
         INSERT INTO hosts (id, account_id, api_key_id, hostname, os, kernel, agent_version, uptime_secs, cpu_model, cpu_cores, memory_total_bytes, last_seen_at, is_online)
@@ -113,6 +104,7 @@ pub async fn ingest(
             memory_total_bytes = EXCLUDED.memory_total_bytes,
             last_seen_at = now(),
             is_online = true
+        WHERE account_id = $2
         "#,
     )
     .bind(host_id)
@@ -126,12 +118,17 @@ pub async fn ingest(
     .bind(&payload.host.cpu_model)
     .bind(payload.host.cpu_cores.map(|v| v as i32))
     .bind(payload.host.memory_total_bytes.map(|v| v as i64))
-    .execute(&state.db)
+    .execute(&mut *tx)
     .await
     .map_err(|e| {
         tracing::error!("failed to upsert host: {}", e);
         StatusCode::INTERNAL_SERVER_ERROR
     })?;
+
+    // Commit account+host upsert transaction
+    tx.commit()
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
     let mut accepted = 0u32;
     let mut rejected = 0u32;
@@ -236,6 +233,38 @@ pub async fn ingest(
                 continue;
             }
         };
+
+        // BLOCKER 2 FIX: Clean up old child rows if this was a re-send (dedup)
+        // This ensures retry safety and prevents duplicate interface/disk metrics
+        if let Err(e) = sqlx::query("DELETE FROM interface_metrics WHERE snapshot_id = $1")
+            .bind(snapshot_id)
+            .execute(&mut *tx)
+            .await {
+            tracing::error!("failed to delete old interface metrics for snapshot {}: {}", index, e);
+            let _ = tx.rollback().await;
+            results.push(SnapshotResult {
+                index,
+                status: 500,
+                message: "Failed to clean interface metrics".to_string(),
+            });
+            rejected += 1;
+            continue;
+        }
+
+        if let Err(e) = sqlx::query("DELETE FROM disk_metrics WHERE snapshot_id = $1")
+            .bind(snapshot_id)
+            .execute(&mut *tx)
+            .await {
+            tracing::error!("failed to delete old disk metrics for snapshot {}: {}", index, e);
+            let _ = tx.rollback().await;
+            results.push(SnapshotResult {
+                index,
+                status: 500,
+                message: "Failed to clean disk metrics".to_string(),
+            });
+            rejected += 1;
+            continue;
+        }
 
         // Insert interface metrics
         let mut iface_error = false;
