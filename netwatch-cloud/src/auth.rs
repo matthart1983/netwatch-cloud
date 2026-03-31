@@ -24,10 +24,11 @@ pub struct Claims {
     pub exp: usize,
 }
 
-pub fn create_access_token(account_id: Uuid, secret: &str) -> Result<String, jsonwebtoken::errors::Error> {
+pub fn create_access_token(account_id: Uuid, secret: &str) -> Result<String, String> {
+    // Issue #20: Avoid unwrap on time arithmetic - use proper error handling
     let exp = chrono::Utc::now()
         .checked_add_signed(chrono::Duration::minutes(15))
-        .unwrap()
+        .ok_or_else(|| "token expiry calculation overflowed".to_string())?
         .timestamp() as usize;
 
     let claims = Claims {
@@ -41,12 +42,14 @@ pub fn create_access_token(account_id: Uuid, secret: &str) -> Result<String, jso
         &claims,
         &EncodingKey::from_secret(secret.as_bytes()),
     )
+    .map_err(|e| e.to_string())
 }
 
-pub fn create_refresh_token(account_id: Uuid, secret: &str) -> Result<String, jsonwebtoken::errors::Error> {
+pub fn create_refresh_token(account_id: Uuid, secret: &str) -> Result<String, String> {
+    // Issue #20: Avoid unwrap on time arithmetic - use proper error handling
     let exp = chrono::Utc::now()
         .checked_add_signed(chrono::Duration::days(7))
-        .unwrap()
+        .ok_or_else(|| "token expiry calculation overflowed".to_string())?
         .timestamp() as usize;
 
     let claims = Claims {
@@ -60,12 +63,13 @@ pub fn create_refresh_token(account_id: Uuid, secret: &str) -> Result<String, js
         &claims,
         &EncodingKey::from_secret(secret.as_bytes()),
     )
+    .map_err(|e| e.to_string())
 }
 
 /// Legacy function - now uses access token expiry
 #[deprecated(since = "0.1.0", note = "use create_access_token instead")]
 #[allow(dead_code)]
-pub fn create_token(account_id: Uuid, secret: &str) -> Result<String, jsonwebtoken::errors::Error> {
+pub fn create_token(account_id: Uuid, secret: &str) -> Result<String, String> {
     create_access_token(account_id, secret)
 }
 
@@ -245,5 +249,22 @@ mod tests {
         assert!(valid_key.len() >= 14);
         let prefix = &valid_key[..14];
         assert_eq!(prefix, "nw_ak_12345678");
+    }
+
+    #[test]
+    fn test_create_access_token_no_panic() {
+        // Issue #20: Verify token creation doesn't panic on overflow
+        // (real overflow would happen ~year 262144, but we verify the function returns Result)
+        let secret = "test-secret";
+        let token_result = create_access_token(Uuid::new_v4(), secret);
+        assert!(token_result.is_ok(), "token creation should not panic, should return Result");
+    }
+
+    #[test]
+    fn test_create_refresh_token_no_panic() {
+        // Issue #20: Verify refresh token creation doesn't panic on overflow
+        let secret = "test-secret";
+        let token_result = create_refresh_token(Uuid::new_v4(), secret);
+        assert!(token_result.is_ok(), "refresh token creation should not panic, should return Result");
     }
 }

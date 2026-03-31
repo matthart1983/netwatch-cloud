@@ -24,6 +24,11 @@ pub async fn run(state: Arc<AppState>) {
 
     info!("alert engine started");
 
+    // Issue #12: Load alert state from database on startup
+    if let Err(e) = load_alert_states(&state, &mut states).await {
+        error!("failed to load alert states on startup: {}", e);
+    }
+
     loop {
         ticker.tick().await;
 
@@ -74,7 +79,8 @@ async fn evaluate_cycle(
             let key = (*rule_id, *host_id);
             let current = states.get(&key).cloned().unwrap_or(AlertState::Ok);
 
-            let (condition_met, metric_value) = check_condition(
+            // Issue #14: Only update state on successful check completion, not on error
+            let (condition_met, metric_value) = match check_condition(
                 &state.db,
                 *host_id,
                 metric,
@@ -82,8 +88,14 @@ async fn evaluate_cycle(
                 *threshold,
                 threshold_str.as_deref(),
             )
-            .await
-            .unwrap_or((false, None));
+            .await {
+                Ok(result) => result,
+                Err(e) => {
+                    error!("failed to check condition for rule {}: {}", rule_id, e);
+                    // Don't modify state on error - keep existing state
+                    continue;
+                }
+            };
 
             let new_state = match current {
                 AlertState::Ok => {
@@ -168,10 +180,58 @@ async fn evaluate_cycle(
                 AlertState::Resolved => AlertState::Ok,
             };
 
+            // Issue #12: Persist state change to database
+            if new_state != current {
+                let state_str = match new_state {
+                    AlertState::Ok => "ok",
+                    AlertState::Pending { .. } => "pending",
+                    AlertState::Firing => "firing",
+                    AlertState::Resolved => "resolved",
+                };
+                
+                let _ = sqlx::query(
+                    "INSERT INTO alert_state (rule_id, host_id, state, updated_at) VALUES ($1, $2, $3, now())
+                     ON CONFLICT (rule_id, host_id) DO UPDATE SET state = EXCLUDED.state, updated_at = now()"
+                )
+                .bind(rule_id)
+                .bind(host_id)
+                .bind(state_str)
+                .execute(&state.db)
+                .await;
+            }
+
             states.insert(key, new_state);
         }
     }
 
+    Ok(())
+}
+
+// Issue #12: Load alert state from database to restore state on restart
+async fn load_alert_states(
+    state: &Arc<AppState>,
+    states: &mut HashMap<StateKey, AlertState>,
+) -> anyhow::Result<()> {
+    let rows = sqlx::query_as::<_, (Uuid, Uuid, String)>(
+        "SELECT rule_id, host_id, state FROM alert_state"
+    )
+    .fetch_all(&state.db)
+    .await?;
+
+    for (rule_id, host_id, state_str) in rows {
+        let alert_state = match state_str.as_str() {
+            "ok" => AlertState::Ok,
+            "pending" => AlertState::Pending { since: Instant::now() },
+            "firing" => AlertState::Firing,
+            "resolved" => AlertState::Resolved,
+            _ => continue,
+        };
+        
+        let key = (rule_id, host_id);
+        states.insert(key, alert_state);
+    }
+
+    info!("loaded {} alert states from database", states.len());
     Ok(())
 }
 

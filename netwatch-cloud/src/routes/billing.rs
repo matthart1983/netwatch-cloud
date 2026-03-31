@@ -26,7 +26,7 @@ pub struct AccountInfo {
     pub trial_ends_at: Option<DateTime<Utc>>,
     pub stripe_customer_id: Option<String>,
     pub notify_email: bool,
-    pub slack_webhook: Option<String>,
+    pub has_slack_webhook: bool,
     pub portal_url: Option<String>,
 }
 
@@ -45,10 +45,13 @@ pub async fn get_account(
 
     let (email, created_at, plan, trial_ends_at, stripe_customer_id, notify_email, slack_webhook) = row;
 
+    // Issue #11: Don't expose slack webhook URL - return only a boolean
+    let has_slack_webhook = slack_webhook.is_some();
+
     let portal_url = if let (Some(ref cust_id), Some(ref key)) =
         (&stripe_customer_id, &state.config.stripe_secret_key)
     {
-        create_portal_session(cust_id, key).ok()
+        create_portal_session(cust_id, key).await.ok()
     } else {
         None
     };
@@ -60,7 +63,7 @@ pub async fn get_account(
         trial_ends_at,
         stripe_customer_id,
         notify_email,
-        slack_webhook,
+        has_slack_webhook,
         portal_url,
     }))
 }
@@ -86,6 +89,15 @@ pub async fn update_account(
     }
 
     if let Some(ref webhook) = req.slack_webhook {
+        // Issue #17: Validate Slack webhook URLs to prevent SSRF attacks
+        if !webhook.is_empty() {
+            // Only allow https://hooks.slack.com/ URLs
+            if !webhook.starts_with("https://hooks.slack.com/") {
+                tracing::warn!("invalid slack webhook URL attempted: {}", webhook);
+                return Err(StatusCode::BAD_REQUEST);
+            }
+        }
+        
         let value = if webhook.is_empty() { None } else { Some(webhook.as_str()) };
         sqlx::query("UPDATE accounts SET slack_webhook = $1 WHERE id = $2")
             .bind(value)
@@ -126,7 +138,7 @@ pub async fn get_billing(
     let portal_url = if let (Some(ref cust_id), Some(ref key)) =
         (&stripe_customer_id, &state.config.stripe_secret_key)
     {
-        create_portal_session(cust_id, key).ok()
+        create_portal_session(cust_id, key).await.ok()
     } else {
         None
     };
@@ -139,7 +151,7 @@ pub async fn get_billing(
     }))
 }
 
-fn create_portal_session(customer_id: &str, secret_key: &str) -> Result<String, String> {
+fn create_portal_session_blocking(customer_id: &str, secret_key: &str) -> Result<String, String> {
     let resp = ureq::post("https://api.stripe.com/v1/billing_portal/sessions")
         .set("Authorization", &format!("Bearer {}", secret_key))
         .send_form(&[("customer", customer_id)])
@@ -152,6 +164,18 @@ fn create_portal_session(customer_id: &str, secret_key: &str) -> Result<String, 
         .ok_or_else(|| "no url in response".to_string())
 }
 
+// Issue #18: Use async wrapper to avoid blocking Tokio runtime with ureq (synchronous HTTP)
+async fn create_portal_session(customer_id: &str, secret_key: &str) -> Result<String, String> {
+    let cust_id = customer_id.to_string();
+    let key = secret_key.to_string();
+    
+    tokio::task::spawn_blocking(move || {
+        create_portal_session_blocking(&cust_id, &key)
+    })
+    .await
+    .map_err(|e| format!("task join error: {}", e))?
+}
+
 pub async fn stripe_webhook(
     State(state): State<Arc<AppState>>,
     headers: HeaderMap,
@@ -162,17 +186,24 @@ pub async fn stripe_webhook(
         Err(_) => return StatusCode::BAD_REQUEST,
     };
 
-    // Verify signature if webhook secret is configured
-    if let Some(ref secret) = state.config.stripe_webhook_secret {
-        let sig_header = headers
-            .get("stripe-signature")
-            .and_then(|v| v.to_str().ok())
-            .unwrap_or("");
-
-        if !verify_signature(payload, sig_header, secret) {
-            tracing::error!("stripe webhook signature verification failed");
-            return StatusCode::BAD_REQUEST;
+    // Issue #10: Webhook secret is REQUIRED - fail if not configured
+    let secret = match &state.config.stripe_webhook_secret {
+        Some(s) => s,
+        None => {
+            tracing::error!("stripe webhook secret not configured");
+            return StatusCode::INTERNAL_SERVER_ERROR;
         }
+    };
+
+    // Always verify signature - never skip verification
+    let sig_header = headers
+        .get("stripe-signature")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("");
+
+    if !verify_signature(payload, sig_header, secret) {
+        tracing::error!("stripe webhook signature verification failed");
+        return StatusCode::BAD_REQUEST;
     }
 
     let event: serde_json::Value = match serde_json::from_str(payload) {

@@ -4,7 +4,9 @@ use sqlx::postgres::PgPoolOptions;
 use std::sync::Arc;
 use tower_http::cors::CorsLayer;
 use tower_http::trace::TraceLayer;
+use tower_http::limit::RequestBodyLimitLayer;
 use tracing::info;
+use tokio::signal;
 
 mod alerts;
 mod auth;
@@ -47,16 +49,59 @@ async fn main() -> Result<()> {
 
     let state = Arc::new(AppState { db: pool, config: cfg });
 
-    // Spawn alert engine background task
+    // Issue #13: Use PostgreSQL advisory locks to prevent duplicate jobs in multi-instance setup
+    // Spawn alert engine background task with advisory lock
     let alert_state = state.clone();
     tokio::spawn(async move {
-        alerts::engine::run(alert_state).await;
+        loop {
+            // Try to acquire advisory lock for alert engine (lock ID: 1001)
+            let locked = sqlx::query_scalar::<_, bool>(
+                "SELECT pg_try_advisory_lock(1001)"
+            )
+            .fetch_one(&alert_state.db)
+            .await
+            .unwrap_or(false);
+
+            if locked {
+                info!("alert engine acquired lock, running cycle");
+                alerts::engine::run(alert_state.clone()).await;
+                
+                // Release lock when engine exits
+                let _ = sqlx::query("SELECT pg_advisory_unlock(1001)")
+                    .execute(&alert_state.db)
+                    .await;
+            } else {
+                info!("alert engine lock held by another instance, waiting");
+                tokio::time::sleep(tokio::time::Duration::from_secs(10)).await;
+            }
+        }
     });
 
-    // Spawn data retention cleanup job (runs hourly)
+    // Spawn data retention cleanup job (runs hourly) with advisory lock
     let retention_state = state.clone();
     tokio::spawn(async move {
-        retention::run(retention_state).await;
+        loop {
+            // Try to acquire advisory lock for retention job (lock ID: 1002)
+            let locked = sqlx::query_scalar::<_, bool>(
+                "SELECT pg_try_advisory_lock(1002)"
+            )
+            .fetch_one(&retention_state.db)
+            .await
+            .unwrap_or(false);
+
+            if locked {
+                info!("retention job acquired lock, running cycle");
+                retention::run(retention_state.clone()).await;
+                
+                // Release lock when job exits
+                let _ = sqlx::query("SELECT pg_advisory_unlock(1002)")
+                    .execute(&retention_state.db)
+                    .await;
+            } else {
+                info!("retention job lock held by another instance, waiting");
+                tokio::time::sleep(tokio::time::Duration::from_secs(10)).await;
+            }
+        }
     });
 
     let limiter = rate_limit::RateLimiter::new();
@@ -99,6 +144,8 @@ async fn main() -> Result<()> {
         .route("/api/v1/account", get(routes::billing::get_account).put(routes::billing::update_account))
         .route("/api/v1/account/billing", get(routes::billing::get_billing))
         .route("/api/v1/webhooks/stripe", post(routes::billing::stripe_webhook))
+        // Issue #16: Add 5MB max request body limit to prevent DoS attacks
+        .layer(RequestBodyLimitLayer::new(5_000_000))
         .layer(middleware::from_fn(security_headers_middleware))
         .layer(middleware::from_fn(rate_limit::rate_limit_middleware))
         .layer(axum::Extension(limiter))
@@ -108,7 +155,22 @@ async fn main() -> Result<()> {
 
     let listener = tokio::net::TcpListener::bind(&bind_addr).await?;
     info!("listening on {}", bind_addr);
-    axum::serve(listener, app).await?;
+
+    // Issue #15: Setup graceful shutdown on SIGTERM/Ctrl+C
+    let (shutdown_tx, mut shutdown_rx) = tokio::sync::broadcast::channel::<()>(1);
+    
+    tokio::spawn(async move {
+        signal::ctrl_c().await.ok();
+        info!("received shutdown signal, initiating graceful shutdown");
+        let _ = shutdown_tx.send(());
+    });
+
+    axum::serve(listener, app)
+        .with_graceful_shutdown(async move {
+            let _ = shutdown_rx.recv().await;
+            info!("graceful shutdown complete");
+        })
+        .await?;
 
     Ok(())
 }
