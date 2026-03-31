@@ -1042,6 +1042,7 @@ dependencies = [
  "bcrypt",
  "chrono",
  "jsonwebtoken",
+ "lazy_static",
  "netwatch-core",
  "serde",
  "serde_json",

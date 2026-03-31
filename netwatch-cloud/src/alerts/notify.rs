@@ -1,15 +1,57 @@
 use crate::config::ServerConfig;
+use std::sync::Mutex;
+use std::collections::HashMap;
+use std::time::{Instant, Duration};
 use tracing::{info, warn};
 use uuid::Uuid;
+
+// Global throttle state: (rule_id, host_id) -> last notification time
+lazy_static::lazy_static! {
+    static ref NOTIFICATION_THROTTLE: Mutex<HashMap<(Uuid, Uuid), Instant>> = Mutex::new(HashMap::new());
+}
+
+const THROTTLE_DURATION: Duration = Duration::from_secs(15 * 60); // 15 minutes
 
 pub async fn send_alert(
     db: &sqlx::PgPool,
     config: &ServerConfig,
     account_id: Uuid,
+    rule_id: Uuid,
+    host_id: Uuid,
     severity: &str,
     message: &str,
     hostname: &str,
 ) {
+    // Check throttle: allow if (1) resolved state or (2) within burst window and first notification
+    let should_notify = {
+        let mut throttle = NOTIFICATION_THROTTLE.lock().unwrap();
+        let key = (rule_id, host_id);
+        let last_notified = throttle.get(&key).copied();
+        
+        if severity == "resolved" {
+            // Always notify on resolution
+            throttle.insert(key, Instant::now());
+            true
+        } else if let Some(last_time) = last_notified {
+            // Check if 15 minutes have passed
+            if last_time.elapsed() >= THROTTLE_DURATION {
+                throttle.insert(key, Instant::now());
+                true
+            } else {
+                false
+            }
+        } else {
+            // First notification for this rule+host
+            throttle.insert(key, Instant::now());
+            true
+        }
+    };
+
+    if !should_notify {
+        info!("notification throttled for rule {} host {}", rule_id, host_id);
+        return;
+    }
+
     // Get account notification settings
     let account = sqlx::query_as::<_, (bool, Option<String>, String)>(
         "SELECT notify_email, slack_webhook, email FROM accounts WHERE id = $1",

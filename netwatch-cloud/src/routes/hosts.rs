@@ -512,3 +512,33 @@ pub async fn get_interfaces(
 
     Ok(Json(interfaces))
 }
+
+pub async fn delete_host(
+    user: AuthUser,
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<Uuid>,
+) -> Result<StatusCode, StatusCode> {
+    // Verify host belongs to user
+    let exists = sqlx::query_scalar::<_, bool>(
+        "SELECT EXISTS(SELECT 1 FROM hosts WHERE id = $1 AND account_id = $2)"
+    )
+    .bind(id)
+    .bind(user.account_id)
+    .fetch_one(&state.db)
+    .await
+    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    if !exists {
+        return Err(StatusCode::NOT_FOUND);
+    }
+
+    // Delete host (cascades to snapshots, metrics, alert rules, alert events via FK constraints)
+    sqlx::query("DELETE FROM hosts WHERE id = $1 AND account_id = $2")
+        .bind(id)
+        .bind(user.account_id)
+        .execute(&state.db)
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    Ok(StatusCode::NO_CONTENT)
+}

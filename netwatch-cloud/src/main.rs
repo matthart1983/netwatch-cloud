@@ -1,5 +1,5 @@
 use anyhow::Result;
-use axum::{middleware, routing::{get, post}, Router};
+use axum::{middleware, routing::{get, post}, Router, response::Response, body::Body};
 use sqlx::postgres::PgPoolOptions;
 use std::sync::Arc;
 use tower_http::cors::CorsLayer;
@@ -61,6 +61,23 @@ async fn main() -> Result<()> {
 
     let limiter = rate_limit::RateLimiter::new();
 
+    // Middleware function to add security headers
+    async fn security_headers_middleware(
+        request: axum::http::Request<Body>,
+        next: middleware::Next,
+    ) -> Response {
+        let mut res = next.run(request).await;
+        res.headers_mut().insert(
+            "Strict-Transport-Security",
+            "max-age=31536000; includeSubDomains".parse().unwrap(),
+        );
+        res.headers_mut().insert(
+            "Content-Security-Policy",
+            "default-src 'self'; script-src 'self'".parse().unwrap(),
+        );
+        res
+    }
+
     let app = Router::new()
         .route("/health", get(routes::health::health_check))
         .route("/version", get(routes::health::version))
@@ -69,7 +86,7 @@ async fn main() -> Result<()> {
         .route("/api/v1/auth/register", post(routes::auth::register))
         .route("/api/v1/auth/login", post(routes::auth::login))
         .route("/api/v1/hosts", get(routes::hosts::list_hosts))
-        .route("/api/v1/hosts/{id}", get(routes::hosts::get_host))
+        .route("/api/v1/hosts/{id}", get(routes::hosts::get_host).delete(routes::hosts::delete_host))
         .route("/api/v1/hosts/{id}/metrics", get(routes::hosts::get_metrics))
         .route("/api/v1/hosts/{id}/disks", get(routes::hosts::get_disks))
         .route("/api/v1/hosts/{id}/interfaces", get(routes::hosts::get_interfaces))
@@ -81,6 +98,7 @@ async fn main() -> Result<()> {
         .route("/api/v1/account", get(routes::billing::get_account).put(routes::billing::update_account))
         .route("/api/v1/account/billing", get(routes::billing::get_billing))
         .route("/api/v1/webhooks/stripe", post(routes::billing::stripe_webhook))
+        .layer(middleware::from_fn(security_headers_middleware))
         .layer(middleware::from_fn(rate_limit::rate_limit_middleware))
         .layer(axum::Extension(limiter))
         .layer(CorsLayer::permissive())
