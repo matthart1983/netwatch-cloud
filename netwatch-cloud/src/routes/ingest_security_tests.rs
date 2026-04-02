@@ -71,38 +71,6 @@ mod security_tests {
     }
 
     #[test]
-    fn test_issue_10_webhook_secret_required() {
-        // Test that webhook processing fails if secret not configured
-        
-        let secret_config: Option<String> = None;
-        
-        // Should fail if secret not configured
-        let should_fail = secret_config.is_none();
-        assert!(should_fail, "Missing webhook secret should cause failure");
-        
-        let secret_config: Option<String> = Some("test-secret".to_string());
-        
-        // Should not fail if secret is configured
-        let should_fail = secret_config.is_none();
-        assert!(!should_fail, "Present webhook secret should not cause failure");
-    }
-
-    #[test]
-    fn test_issue_11_slack_webhook_url_not_exposed() {
-        // Test that slack_webhook URL is not returned in GET /account
-        
-        let slack_webhook: Option<String> = Some("https://hooks.slack.com/services/secret".to_string());
-        
-        // Should not expose the actual URL
-        let has_slack = slack_webhook.is_some();
-        assert!(has_slack, "Should track that webhook exists");
-        
-        // The response should NOT contain the URL itself
-        let response = format!("has_slack_webhook: {}", has_slack);
-        assert!(!response.contains("https://hooks.slack.com"), "URL should not be in response");
-    }
-
-    #[test]
     fn test_issue_12_alert_state_persistence() {
         // Test that alert state is persisted to database
         
@@ -210,25 +178,6 @@ mod security_tests {
         // Payload within limit should be allowed
         let normal_payload = 1_000_000;
         assert!(normal_payload <= max_allowed_bytes, "1MB payload should be within limit");
-    }
-
-    #[test]
-    fn test_issue_17_slack_webhook_url_validation() {
-        // Issue #17: Verify Slack webhook URLs are validated to prevent SSRF
-        
-        // Valid Slack URLs should be allowed
-        let valid_webhook = "https://hooks.slack.com/services/T00000000/B00000000/XXXXXXXXXXXXXXXXXXXX";
-        assert!(valid_webhook.starts_with("https://hooks.slack.com/"), "Valid Slack URL should pass");
-        
-        // SSRF attempts should be blocked
-        let ssrf_localhost = "http://localhost:6379";
-        assert!(!ssrf_localhost.starts_with("https://hooks.slack.com/"), "HTTP localhost should be blocked");
-        
-        let ssrf_internal = "http://169.254.169.254";
-        assert!(!ssrf_internal.starts_with("https://hooks.slack.com/"), "AWS metadata endpoint should be blocked");
-        
-        let ssrf_unencrypted = "http://hooks.slack.com/services/T00000000/B00000000/XXXX";
-        assert!(!ssrf_unencrypted.starts_with("https://hooks.slack.com/"), "Unencrypted Slack URL should be blocked");
     }
 
     #[test]

@@ -13,6 +13,7 @@ export default function SettingsPage() {
   const [account, setAccount] = useState<AccountInfo | null>(null)
   const [notifyEmail, setNotifyEmail] = useState(true)
   const [slackWebhook, setSlackWebhook] = useState('')
+  const [slackWebhookDirty, setSlackWebhookDirty] = useState(false)
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
   const [loading, setLoading] = useState(true)
@@ -29,7 +30,8 @@ export default function SettingsPage() {
       setKeys(keysData)
       setAccount(accountData)
       setNotifyEmail(accountData.notify_email)
-      setSlackWebhook(accountData.slack_webhook || '')
+      setSlackWebhook('')
+      setSlackWebhookDirty(false)
     } catch {
       // handled
     } finally {
@@ -61,7 +63,16 @@ export default function SettingsPage() {
     setSaving(true)
     setSaved(false)
     try {
-      await updateAccount({ notify_email: notifyEmail, slack_webhook: slackWebhook })
+      const update: { notify_email?: boolean; slack_webhook?: string } = {
+        notify_email: notifyEmail,
+      }
+
+      if (slackWebhookDirty) {
+        update.slack_webhook = slackWebhook
+      }
+
+      await updateAccount(update)
+      await loadData()
       setSaved(true)
       setTimeout(() => setSaved(false), 3000)
     } catch {
@@ -76,6 +87,8 @@ export default function SettingsPage() {
     const diff = new Date(account.trial_ends_at).getTime() - Date.now()
     return Math.max(0, Math.ceil(diff / (1000 * 60 * 60 * 24)))
   }
+
+  const slackWebhookWillBeRemoved = Boolean(account?.has_slack_webhook) && slackWebhookDirty && slackWebhook.trim() === ''
 
   if (authLoading || loading) return <div className="text-zinc-400 mt-10">Loading...</div>
 
@@ -123,6 +136,9 @@ export default function SettingsPage() {
                   ? '10 hosts · 72h data retention · Email + Slack alerts'
                   : '3 hosts · 24h data retention · Email alerts only'}
               </p>
+              <p className="text-xs text-zinc-500 mb-3">
+                Billing changes happen in Stripe&apos;s hosted portal.
+              </p>
               {account.portal_url ? (
                 <a
                   href={account.portal_url}
@@ -130,14 +146,14 @@ export default function SettingsPage() {
                   rel="noopener noreferrer"
                   className="bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-2 rounded text-sm inline-block"
                 >
-                  Manage Billing →
+                  Open Stripe Billing →
                 </a>
               ) : (
                 <button
                   disabled
                   className="bg-zinc-700 text-zinc-400 px-4 py-2 rounded text-sm cursor-not-allowed"
                 >
-                  Add Payment Method
+                  Billing Portal Unavailable
                 </button>
               )}
             </div>
@@ -164,14 +180,39 @@ export default function SettingsPage() {
 
           <div>
             <label className="block text-sm font-medium mb-1">Slack Webhook URL</label>
-            <p className="text-xs text-zinc-500 mb-2">Receive alert notifications in a Slack channel</p>
+            <p className="text-xs text-zinc-500 mb-2">
+              {account?.has_slack_webhook && !slackWebhookDirty
+                ? 'A webhook is already saved. Leave this blank to keep it, or enter a new one to replace it.'
+                : 'Receive alert notifications in a Slack channel.'}
+            </p>
+            {account?.has_slack_webhook && !slackWebhookDirty && (
+              <p className="text-xs text-emerald-400 mb-2">Slack webhook configured.</p>
+            )}
+            {slackWebhookWillBeRemoved && (
+              <p className="text-xs text-orange-400 mb-2">Slack webhook will be removed when you save.</p>
+            )}
             <input
               type="url"
               value={slackWebhook}
-              onChange={e => setSlackWebhook(e.target.value)}
-              placeholder="https://hooks.slack.com/services/..."
+              onChange={e => {
+                setSlackWebhook(e.target.value)
+                setSlackWebhookDirty(true)
+              }}
+              placeholder={account?.has_slack_webhook ? 'Enter a new Slack webhook to replace the saved one' : 'https://hooks.slack.com/services/...'}
               className="w-full bg-zinc-950 border border-zinc-700 rounded px-3 py-2 text-sm focus:outline-none focus:border-emerald-500 placeholder-zinc-600"
             />
+            {account?.has_slack_webhook && (
+              <button
+                type="button"
+                onClick={() => {
+                  setSlackWebhook('')
+                  setSlackWebhookDirty(true)
+                }}
+                className="mt-2 text-xs text-zinc-400 hover:text-zinc-100"
+              >
+                Remove saved Slack webhook
+              </button>
+            )}
           </div>
 
           <button

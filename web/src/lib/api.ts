@@ -201,7 +201,7 @@ export interface AccountInfo {
   trial_ends_at: string | null
   stripe_customer_id: string | null
   notify_email: boolean
-  slack_webhook: string | null
+  has_slack_webhook: boolean
   portal_url: string | null
 }
 

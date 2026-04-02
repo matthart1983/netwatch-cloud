@@ -108,6 +108,14 @@ pub fn verify_refresh_token(token: &str, secret: &str) -> Result<Claims, jsonweb
     Ok(claims)
 }
 
+fn api_key_prefix(api_key: &str) -> Option<&str> {
+    if !api_key.is_ascii() || !api_key.starts_with("nw_ak_") {
+        return None;
+    }
+
+    api_key.get(..14)
+}
+
 /// Extractor for authenticated web users (JWT)
 pub struct AuthUser {
     pub account_id: Uuid,
@@ -162,11 +170,7 @@ impl FromRequestParts<Arc<AppState>> for AgentAuth {
             .strip_prefix("Bearer ")
             .ok_or(StatusCode::UNAUTHORIZED)?;
 
-        // Extract prefix for lookup
-        if api_key.len() < 14 || !api_key.starts_with("nw_ak_") {
-            return Err(StatusCode::UNAUTHORIZED);
-        }
-        let prefix = &api_key[..14]; // "nw_ak_" + 8 chars - safe because we checked len >= 14
+        let prefix = api_key_prefix(api_key).ok_or(StatusCode::UNAUTHORIZED)?;
 
         // Look up by prefix, then bcrypt verify
         let row = sqlx::query_as::<_, (Uuid, Uuid, String)>(
@@ -235,20 +239,19 @@ mod tests {
 
     #[test]
     fn test_api_key_length_check() {
-        // Test that short API keys are rejected without panic
-        let short_key = "nw_ak_12345";  // 11 chars, less than 14
-        assert!(short_key.len() < 14);
-        // This test verifies the length check: if api_key.len() < 14 returns true
-        assert!(short_key.len() < 14);
+        assert!(api_key_prefix("nw_ak_12345").is_none());
     }
 
     #[test]
     fn test_api_key_prefix_validation() {
-        // Test that correct prefix length is safe
-        let valid_key = "nw_ak_12345678";  // 14 chars
-        assert!(valid_key.len() >= 14);
-        let prefix = &valid_key[..14];
-        assert_eq!(prefix, "nw_ak_12345678");
+        assert_eq!(api_key_prefix("nw_ak_12345678"), Some("nw_ak_12345678"));
+    }
+
+    #[test]
+    fn test_api_key_prefix_rejects_non_ascii_without_panicking() {
+        let tricky_key = "nw_ak_123456€";
+        assert!(tricky_key.len() >= 14);
+        assert!(api_key_prefix(tricky_key).is_none());
     }
 
     #[test]

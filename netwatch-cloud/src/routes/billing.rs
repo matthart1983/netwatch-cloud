@@ -74,6 +74,21 @@ pub struct UpdateAccount {
     pub slack_webhook: Option<String>,
 }
 
+fn normalize_slack_webhook(webhook: &str) -> Result<Option<&str>, StatusCode> {
+    let webhook = webhook.trim();
+
+    if webhook.is_empty() {
+        return Ok(None);
+    }
+
+    if !webhook.starts_with("https://hooks.slack.com/") {
+        tracing::warn!("invalid slack webhook URL attempted");
+        return Err(StatusCode::BAD_REQUEST);
+    }
+
+    Ok(Some(webhook))
+}
+
 pub async fn update_account(
     user: AuthUser,
     State(state): State<Arc<AppState>>,
@@ -89,16 +104,7 @@ pub async fn update_account(
     }
 
     if let Some(ref webhook) = req.slack_webhook {
-        // Issue #17: Validate Slack webhook URLs to prevent SSRF attacks
-        if !webhook.is_empty() {
-            // Only allow https://hooks.slack.com/ URLs
-            if !webhook.starts_with("https://hooks.slack.com/") {
-                tracing::warn!("invalid slack webhook URL attempted: {}", webhook);
-                return Err(StatusCode::BAD_REQUEST);
-            }
-        }
-        
-        let value = if webhook.is_empty() { None } else { Some(webhook.as_str()) };
+        let value = normalize_slack_webhook(webhook)?;
         sqlx::query("UPDATE accounts SET slack_webhook = $1 WHERE id = $2")
             .bind(value)
             .bind(user.account_id)
@@ -426,89 +432,106 @@ async fn handle_payment_failed(
 
 #[cfg(test)]
 mod tests {
-    #[test]
-    fn test_webhook_idempotency_logic() {
-        // Test that idempotency check would work correctly
-        let event_id_1 = "evt_123";
-        let event_id_2 = "evt_456";
-        
-        // Simulate checking if already processed
-        let mut processed_events = std::collections::HashSet::new();
-        
-        // First event should not be processed
-        assert!(!processed_events.contains(event_id_1));
-        
-        // Process first event
-        processed_events.insert(event_id_1);
-        
-        // Now it should be marked as processed
-        assert!(processed_events.contains(event_id_1));
-        
-        // Second event should not be processed
-        assert!(!processed_events.contains(event_id_2));
+    use super::*;
+    use crate::config::ServerConfig;
+    use axum::extract::State;
+    use axum::Json;
+    use sqlx::postgres::PgPoolOptions;
+    use std::time::UNIX_EPOCH;
+    use uuid::Uuid;
+
+    fn test_state(stripe_webhook_secret: Option<String>) -> Arc<AppState> {
+        Arc::new(AppState {
+            db: PgPoolOptions::new()
+                .connect_lazy("postgres://postgres:postgres@localhost/netwatch_test")
+                .expect("lazy test pool"),
+            config: ServerConfig {
+                database_url: "postgres://postgres:postgres@localhost/netwatch_test".to_string(),
+                jwt_secret: "test-jwt-secret".to_string(),
+                bind_addr: "127.0.0.1:0".to_string(),
+                resend_api_key: None,
+                stripe_secret_key: Some("sk_test_123".to_string()),
+                stripe_webhook_secret,
+            },
+        })
     }
 
     #[test]
-    fn test_webhook_fail_closed_logic() {
-        // Test that webhook returns 500 on error, 200 on success
-        let result: Result<(), String> = Ok(());
-        
-        let status_code = match result {
-            Ok(()) => 200u16,
-            Err(_) => 500u16,
+    fn test_account_info_serialization_hides_slack_webhook() {
+        let account = AccountInfo {
+            email: "user@example.com".to_string(),
+            created_at: Utc::now(),
+            plan: "trial".to_string(),
+            trial_ends_at: None,
+            stripe_customer_id: Some("cus_123".to_string()),
+            notify_email: true,
+            has_slack_webhook: true,
+            portal_url: Some("https://billing.stripe.com/session/test".to_string()),
         };
-        assert_eq!(status_code, 200);
-        
-        // Test error case
-        let result: Result<(), String> = Err("Processing failed".to_string());
-        
-        let status_code = match result {
-            Ok(()) => 200u16,
-            Err(_) => 500u16,
-        };
-        assert_eq!(status_code, 500);
+
+        let payload = serde_json::to_value(account).expect("serialize account info");
+        assert_eq!(payload["has_slack_webhook"], serde_json::Value::Bool(true));
+        assert!(payload.get("slack_webhook").is_none());
+    }
+
+    #[tokio::test]
+    async fn test_stripe_webhook_requires_configured_secret() {
+        let state = test_state(None);
+
+        let status = stripe_webhook(
+            State(state),
+            HeaderMap::new(),
+            Bytes::from_static(br#"{"id":"evt_123","type":"invoice.payment_failed","data":{"object":{"customer":"cus_123"}}}"#),
+        )
+        .await;
+
+        assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR);
     }
 
     #[test]
-    fn test_stripe_signature_validation_basic() {
-        // Test basic signature parsing logic
-        let sig_header = "t=1614556800,v1=abc123def456,v1=xyz789";
-        
-        let mut timestamp: Option<u64> = None;
-        let mut signatures: Vec<String> = Vec::new();
-        
-        for part in sig_header.split(',') {
-            let trimmed = part.trim();
-            if let Some(ts) = trimmed.strip_prefix("t=") {
-                if let Ok(t) = ts.parse::<u64>() {
-                    timestamp = Some(t);
-                }
-            } else if let Some(sig) = trimmed.strip_prefix("v1=") {
-                signatures.push(sig.to_string());
-            }
-        }
-        
-        assert_eq!(timestamp, Some(1614556800));
-        assert_eq!(signatures.len(), 2);
-        assert_eq!(signatures[0], "abc123def456");
-        assert_eq!(signatures[1], "xyz789");
+    fn test_verify_signature_accepts_valid_signature() {
+        let secret = "whsec_test";
+        let payload = r#"{"id":"evt_123","type":"invoice.payment_failed","data":{"object":{"customer":"cus_123"}}}"#;
+        let timestamp = UNIX_EPOCH.elapsed().expect("unix time").as_secs();
+        let signed_content = format!("{}.{}", timestamp, payload);
+        let mut mac = HmacSha256::new_from_slice(secret.as_bytes()).expect("hmac");
+        mac.update(signed_content.as_bytes());
+        let sig_header = format!("t={},v1={}", timestamp, hex::encode(mac.finalize().into_bytes()));
+
+        assert!(verify_signature(payload, &sig_header, secret));
     }
 
     #[test]
-    fn test_event_type_extraction() {
-        // Test that event type can be extracted from JSON
-        let json = serde_json::json!({
-            "id": "evt_123",
-            "type": "customer.subscription.updated",
-            "data": {
-                "object": {}
-            }
-        });
-        
-        let event_id = json["id"].as_str().unwrap_or("");
-        let event_type = json["type"].as_str().unwrap_or("");
-        
-        assert_eq!(event_id, "evt_123");
-        assert_eq!(event_type, "customer.subscription.updated");
+    fn test_verify_signature_rejects_old_timestamp() {
+        let secret = "whsec_test";
+        let payload = r#"{"id":"evt_123","type":"invoice.payment_failed","data":{"object":{"customer":"cus_123"}}}"#;
+        let timestamp = UNIX_EPOCH
+            .elapsed()
+            .expect("unix time")
+            .as_secs()
+            .saturating_sub(301);
+        let signed_content = format!("{}.{}", timestamp, payload);
+        let mut mac = HmacSha256::new_from_slice(secret.as_bytes()).expect("hmac");
+        mac.update(signed_content.as_bytes());
+        let sig_header = format!("t={},v1={}", timestamp, hex::encode(mac.finalize().into_bytes()));
+
+        assert!(!verify_signature(payload, &sig_header, secret));
+    }
+
+    #[tokio::test]
+    async fn test_update_account_rejects_invalid_slack_webhook() {
+        let result = update_account(
+            AuthUser {
+                account_id: Uuid::new_v4(),
+            },
+            State(test_state(Some("whsec_test".to_string()))),
+            Json(UpdateAccount {
+                notify_email: None,
+                slack_webhook: Some("http://localhost:6379".to_string()),
+            }),
+        )
+        .await;
+
+        assert_eq!(result, Err(StatusCode::BAD_REQUEST));
     }
 }
