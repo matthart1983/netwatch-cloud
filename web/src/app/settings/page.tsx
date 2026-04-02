@@ -90,106 +90,122 @@ export default function SettingsPage() {
 
   const slackWebhookWillBeRemoved = Boolean(account?.has_slack_webhook) && slackWebhookDirty && slackWebhook.trim() === ''
 
-  if (authLoading || loading) return <div className="text-zinc-400 mt-10">Loading...</div>
+  if (authLoading || loading) return <div className="mt-10 nw-muted">Loading settings...</div>
 
   return (
-    <div className="max-w-2xl">
-      <h1 className="text-2xl font-bold mb-6">Settings</h1>
-
-      {/* Account & Subscription */}
-      {account && (
-        <section className="mb-8">
-          <h2 className="text-lg font-semibold mb-4">Account</h2>
-          <div className="bg-zinc-900 border border-zinc-800 rounded-lg p-4 space-y-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <div className="text-sm text-zinc-400">Email</div>
-                <div className="text-sm font-medium">{account.email}</div>
-              </div>
-              <div>
-                <div className="text-sm text-zinc-400">Member since</div>
-                <div className="text-sm font-medium">{new Date(account.created_at).toLocaleDateString()}</div>
-              </div>
+    <div className="space-y-8">
+      <section className="nw-card rounded-[1.75rem] p-6 sm:p-8">
+        <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
+          <div className="space-y-3">
+            <span className="nw-kicker">Workspace settings</span>
+            <div>
+              <h1 className="nw-section-title">Shape billing, access, and notifications from one control surface.</h1>
+              <p className="mt-3 max-w-2xl text-base leading-7 nw-muted">
+                Keep the account tidy, hand out installation credentials safely, and tune how the platform reaches you when conditions change.
+              </p>
             </div>
+          </div>
+          <div className="grid gap-3 sm:grid-cols-3 lg:min-w-[430px]">
+            <div className="nw-stat-card">
+              <div className="text-xs uppercase tracking-[0.18em] nw-subtle">Plan</div>
+              <div className="mt-2 text-2xl font-semibold">{account?.plan === 'early_access' ? 'Pro' : 'Trial'}</div>
+            </div>
+            <div className="nw-stat-card">
+              <div className="text-xs uppercase tracking-[0.18em] nw-subtle">API keys</div>
+              <div className="mt-2 text-2xl font-semibold">{keys.length}</div>
+            </div>
+            <div className="nw-stat-card">
+              <div className="text-xs uppercase tracking-[0.18em] nw-subtle">Alerts</div>
+              <div className="mt-2 text-2xl font-semibold">{notifyEmail || account?.has_slack_webhook ? 'On' : 'Off'}</div>
+            </div>
+          </div>
+        </div>
+      </section>
 
-            <div className="border-t border-zinc-800 pt-4">
-              <div className="flex items-center gap-3 mb-2">
-                <span className={`px-2 py-0.5 rounded text-xs font-medium ${
-                  account.plan === 'early_access' ? 'bg-emerald-900 text-emerald-300' :
-                  account.plan === 'trial' ? 'bg-yellow-900 text-yellow-300' :
-                  account.plan === 'past_due' ? 'bg-orange-900 text-orange-300' :
-                  'bg-red-900 text-red-300'
+      {account && (
+        <section className="nw-card rounded-[1.5rem] p-5 sm:p-6">
+          <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
+            <div className="space-y-3">
+              <div>
+                <p className="text-sm font-semibold uppercase tracking-[0.18em] text-[var(--nw-text-soft)]">Account & billing</p>
+                <h2 className="mt-2 text-2xl font-semibold">{account.email}</h2>
+                <p className="mt-2 text-sm nw-muted">Member since {new Date(account.created_at).toLocaleDateString()}.</p>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <span className={`rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-[0.16em] ${
+                  account.plan === 'early_access' ? 'bg-[rgba(61,214,198,0.14)] text-[#bffff8]' :
+                  account.plan === 'trial' ? 'bg-amber-400/12 text-amber-200' :
+                  account.plan === 'past_due' ? 'bg-orange-400/12 text-orange-200' :
+                  'bg-red-500/12 text-red-300'
                 }`}>
-                  {account.plan === 'early_access' ? 'Early Access' :
-                   account.plan === 'trial' ? 'Trial' :
-                   account.plan === 'past_due' ? 'Past Due' : 'Expired'}
+                  {account.plan === 'early_access' ? 'Early access' : account.plan}
                 </span>
-                <span className="text-sm text-zinc-400">
+                <span className="text-sm nw-muted">
                   {account.plan === 'trial' && `${getTrialDaysLeft()} days remaining`}
-                  {account.plan === 'early_access' && '$49/mo'}
+                  {account.plan === 'early_access' && '$49 / month'}
                   {account.plan === 'expired' && 'Add a payment method to continue'}
                   {account.plan === 'past_due' && 'Update your payment method'}
                 </span>
               </div>
-              <p className="text-xs text-zinc-500 mb-3">
+              <p className="text-sm nw-muted">
                 {account.plan === 'early_access'
-                  ? '10 hosts · 72h data retention · Email + Slack alerts'
-                  : '3 hosts · 24h data retention · Email alerts only'}
+                  ? '10 hosts · 72-hour retention · Email and Slack alerts'
+                  : '3 hosts · 24-hour retention · Email alerts'}
               </p>
-              <p className="text-xs text-zinc-500 mb-3">
-                Billing changes happen in Stripe&apos;s hosted portal.
+            </div>
+            <div className="lg:max-w-sm lg:text-right">
+              <p className="text-sm leading-7 nw-muted">
+                Billing changes happen in Stripe&apos;s hosted customer portal. Use it to add or update payment methods without leaving the workflow half-finished.
               </p>
-              {account.portal_url ? (
-                <a
-                  href={account.portal_url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-2 rounded text-sm inline-block"
-                >
-                  Open Stripe Billing →
-                </a>
-              ) : (
-                <button
-                  disabled
-                  className="bg-zinc-700 text-zinc-400 px-4 py-2 rounded text-sm cursor-not-allowed"
-                >
-                  Billing Portal Unavailable
-                </button>
-              )}
+              <div className="mt-4">
+                {account.portal_url ? (
+                  <a href={account.portal_url} target="_blank" rel="noopener noreferrer" className="nw-button-primary">
+                    Open Stripe billing
+                  </a>
+                ) : (
+                  <button disabled className="nw-button-secondary cursor-not-allowed opacity-65">
+                    Billing portal unavailable
+                  </button>
+                )}
+              </div>
             </div>
           </div>
         </section>
       )}
 
-      {/* Notifications */}
-      <section className="mb-8">
-        <h2 className="text-lg font-semibold mb-4">Notifications</h2>
-        <div className="bg-zinc-900 border border-zinc-800 rounded-lg p-4 space-y-4">
-          <label className="flex items-center justify-between cursor-pointer">
+      <section className="nw-card rounded-[1.5rem] p-5 sm:p-6">
+        <div className="mb-5 space-y-2">
+          <p className="text-sm font-semibold uppercase tracking-[0.18em] text-[var(--nw-text-soft)]">Notifications</p>
+          <h2 className="text-2xl font-semibold">Tune the signal</h2>
+          <p className="text-sm leading-7 nw-muted">Keep operators informed without leaking credentials or creating noisy workflows.</p>
+        </div>
+        <div className="space-y-5">
+          <label className="flex items-center justify-between gap-4 rounded-[1.1rem] border border-white/7 bg-white/[0.02] px-4 py-4">
             <div>
-              <div className="text-sm font-medium">Email Alerts</div>
-              <div className="text-xs text-zinc-500">Receive alert notifications via email</div>
+              <div className="text-sm font-medium">Email alerts</div>
+              <div className="mt-1 text-sm nw-muted">Receive incident notifications in your inbox.</div>
             </div>
             <button
               onClick={() => setNotifyEmail(!notifyEmail)}
-              className={`relative w-10 h-5 rounded-full transition-colors ${notifyEmail ? 'bg-emerald-600' : 'bg-zinc-700'}`}
+              className={`relative h-6 w-12 rounded-full transition-colors ${notifyEmail ? 'bg-[var(--nw-accent)]' : 'bg-white/10'}`}
+              type="button"
             >
-              <span className={`absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full transition-transform ${notifyEmail ? 'translate-x-5' : ''}`} />
+              <span className={`absolute top-1 left-1 h-4 w-4 rounded-full bg-white transition-transform ${notifyEmail ? 'translate-x-6' : ''}`} />
             </button>
           </label>
 
           <div>
-            <label className="block text-sm font-medium mb-1">Slack Webhook URL</label>
-            <p className="text-xs text-zinc-500 mb-2">
+            <label className="mb-2 block text-sm font-medium">Slack webhook URL</label>
+            <p className="mb-2 text-sm nw-muted">
               {account?.has_slack_webhook && !slackWebhookDirty
-                ? 'A webhook is already saved. Leave this blank to keep it, or enter a new one to replace it.'
-                : 'Receive alert notifications in a Slack channel.'}
+                ? 'A webhook is already stored. Leave the field blank to keep it, or paste a new URL to replace it.'
+                : 'Route alerts into a Slack channel for faster operational response.'}
             </p>
             {account?.has_slack_webhook && !slackWebhookDirty && (
-              <p className="text-xs text-emerald-400 mb-2">Slack webhook configured.</p>
+              <p className="mb-2 text-sm text-[var(--nw-accent)]">Slack webhook configured.</p>
             )}
             {slackWebhookWillBeRemoved && (
-              <p className="text-xs text-orange-400 mb-2">Slack webhook will be removed when you save.</p>
+              <p className="mb-2 text-sm text-orange-300">The saved Slack webhook will be removed when you save.</p>
             )}
             <input
               type="url"
@@ -198,8 +214,8 @@ export default function SettingsPage() {
                 setSlackWebhook(e.target.value)
                 setSlackWebhookDirty(true)
               }}
-              placeholder={account?.has_slack_webhook ? 'Enter a new Slack webhook to replace the saved one' : 'https://hooks.slack.com/services/...'}
-              className="w-full bg-zinc-950 border border-zinc-700 rounded px-3 py-2 text-sm focus:outline-none focus:border-emerald-500 placeholder-zinc-600"
+              placeholder={account?.has_slack_webhook ? 'Paste a replacement Slack webhook URL' : 'https://hooks.slack.com/services/...'}
+              className="nw-input"
             />
             {account?.has_slack_webhook && (
               <button
@@ -208,116 +224,113 @@ export default function SettingsPage() {
                   setSlackWebhook('')
                   setSlackWebhookDirty(true)
                 }}
-                className="mt-2 text-xs text-zinc-400 hover:text-zinc-100"
+                className="mt-3 text-sm font-medium text-[var(--nw-accent)] hover:text-[#a7fff4]"
               >
                 Remove saved Slack webhook
               </button>
             )}
           </div>
 
-          <button
-            onClick={handleSaveNotifications}
-            disabled={saving}
-            className="bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-2 rounded text-sm disabled:opacity-50"
-          >
-            {saving ? 'Saving...' : saved ? '✓ Saved' : 'Save Notification Settings'}
+          <button onClick={handleSaveNotifications} disabled={saving} className="nw-button-primary disabled:opacity-50">
+            {saving ? 'Saving changes...' : saved ? 'Saved' : 'Save notification settings'}
           </button>
         </div>
       </section>
 
-      {/* API Keys */}
-      <section className="mb-8">
-        <h2 className="text-lg font-semibold mb-4">API Keys</h2>
+      <section className="nw-card rounded-[1.5rem] p-5 sm:p-6">
+        <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+          <div className="space-y-2">
+            <p className="text-sm font-semibold uppercase tracking-[0.18em] text-[var(--nw-text-soft)]">API keys</p>
+            <h2 className="text-2xl font-semibold">Provision agents safely</h2>
+            <p className="text-sm leading-7 nw-muted">Each installation should get a clear credential and a simple revoke path.</p>
+          </div>
+          <button onClick={handleCreate} className="nw-button-primary">
+            Create new API key
+          </button>
+        </div>
 
         {newKey && (
-          <div className="bg-zinc-900 border border-emerald-700 rounded-lg p-4 mb-4">
-            <p className="text-sm text-emerald-400 mb-2">New API key created (shown once):</p>
-            <div className="font-mono text-sm break-all mb-2">{newKey}</div>
-
-            <p className="text-sm text-zinc-400 mt-3 mb-2">Install command (ready to paste on your Linux server):</p>
-            <div className="bg-zinc-950 border border-zinc-800 rounded p-3 font-mono text-xs break-all mb-3 select-all">
+          <div className="mb-5 rounded-[1.25rem] border border-[rgba(61,214,198,0.2)] bg-[rgba(61,214,198,0.08)] p-4 sm:p-5">
+            <p className="text-sm font-semibold text-[#bffff8]">New API key created — this is the only time it will be shown.</p>
+            <div className="mt-3 nw-command break-all text-sm">{newKey}</div>
+            <p className="mb-2 mt-4 text-sm nw-muted">Ready-to-paste install command</p>
+            <div className="nw-command break-all text-xs">
               curl -sSL https://netwatch-api-production.up.railway.app/install.sh | sudo sh -s -- --api-key {newKey} --endpoint https://netwatch-api-production.up.railway.app/api/v1/ingest
             </div>
-
-            <div className="flex gap-2">
-              <button
-                onClick={() => navigator.clipboard.writeText(`curl -sSL https://netwatch-api-production.up.railway.app/install.sh | sudo sh -s -- --api-key ${newKey} --endpoint https://netwatch-api-production.up.railway.app/api/v1/ingest`)}
-                className="bg-emerald-600 hover:bg-emerald-500 text-white px-3 py-1 rounded text-xs"
-              >
-                Copy Install Command
+            <div className="mt-4 flex flex-wrap gap-3">
+              <button onClick={() => navigator.clipboard.writeText(`curl -sSL https://netwatch-api-production.up.railway.app/install.sh | sudo sh -s -- --api-key ${newKey} --endpoint https://netwatch-api-production.up.railway.app/api/v1/ingest`)} className="nw-button-secondary">
+                Copy install command
               </button>
-              <button
-                onClick={() => navigator.clipboard.writeText(newKey)}
-                className="bg-zinc-700 hover:bg-zinc-600 text-white px-3 py-1 rounded text-xs"
-              >
-                Copy Key Only
+              <button onClick={() => navigator.clipboard.writeText(newKey)} className="nw-button-ghost">
+                Copy key only
               </button>
-              <button
-                onClick={() => setNewKey(null)}
-                className="text-zinc-400 hover:text-zinc-100 text-xs"
-              >
+              <button onClick={() => setNewKey(null)} className="nw-button-ghost">
                 Dismiss
               </button>
             </div>
           </div>
         )}
 
-        <div className="space-y-2 mb-4">
+        <div className="grid gap-3">
           {keys.map(key => (
-            <div key={key.id} className="bg-zinc-900 border border-zinc-800 rounded p-3 flex items-center justify-between">
-              <div>
-                <span className="font-mono text-sm">{key.key_prefix}...</span>
-                {key.label && <span className="text-zinc-400 text-xs ml-2">({key.label})</span>}
-                <div className="text-xs text-zinc-500 mt-1">
-                  Created {new Date(key.created_at).toLocaleDateString()}
-                  {key.last_used_at && ` · Last used ${new Date(key.last_used_at).toLocaleDateString()}`}
+            <div key={key.id} className="nw-card-soft rounded-[1.2rem] p-4">
+              <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <div className="font-mono text-sm text-[var(--nw-text)]">{key.key_prefix}...</div>
+                  {key.label && <div className="mt-1 text-sm nw-muted">{key.label}</div>}
+                  <div className="mt-1 text-xs nw-subtle">
+                    Created {new Date(key.created_at).toLocaleDateString()}
+                    {key.last_used_at && ` · Last used ${new Date(key.last_used_at).toLocaleDateString()}`}
+                  </div>
                 </div>
+                <button onClick={() => handleDelete(key.id)} className="nw-button-ghost text-xs">
+                  Revoke
+                </button>
               </div>
-              <button
-                onClick={() => handleDelete(key.id)}
-                className="text-red-400 hover:text-red-300 text-xs"
-              >
-                Revoke
-              </button>
             </div>
           ))}
-        </div>
-
-        <button
-          onClick={handleCreate}
-          className="bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-2 rounded text-sm"
-        >
-          Create New API Key
-        </button>
-      </section>
-
-      {/* Install Agent */}
-      <section className="mb-8">
-        <h2 className="text-lg font-semibold mb-4">Install Agent</h2>
-        <p className="text-zinc-400 text-sm mb-2">
-          Create a new API key above — the full install command will appear automatically with your key pre-filled.
-        </p>
-        <div className="bg-zinc-900 border border-zinc-800 rounded p-3 font-mono text-xs break-all text-zinc-500">
-          curl -sSL https://netwatch-api-production.up.railway.app/install.sh | sudo sh -s -- --api-key <span className="text-yellow-400">YOUR_API_KEY</span> --endpoint https://netwatch-api-production.up.railway.app/api/v1/ingest
+          {keys.length === 0 && (
+            <div className="nw-empty-state">
+              <h3 className="text-lg font-semibold">No API keys yet</h3>
+              <p className="mt-2 text-sm leading-7 nw-muted">Create one to install the first agent and bring your fleet into the dashboard.</p>
+            </div>
+          )}
         </div>
       </section>
 
-      {/* Agent Commands */}
-      <section>
-        <h2 className="text-lg font-semibold mb-4">Agent Commands</h2>
-        <div className="bg-zinc-900 border border-zinc-800 rounded p-3 font-mono text-xs space-y-1">
-          <div><span className="text-zinc-500"># Check status</span></div>
-          <div>netwatch-agent status</div>
-          <div className="pt-1"><span className="text-zinc-500"># View config</span></div>
-          <div>netwatch-agent config</div>
-          <div className="pt-1"><span className="text-zinc-500"># Update to latest version</span></div>
-          <div>sudo netwatch-agent update</div>
-          <div className="pt-1"><span className="text-zinc-500"># View logs</span></div>
-          <div>journalctl -u netwatch-agent -f</div>
-          <div className="pt-1"><span className="text-zinc-500"># Remove agent</span></div>
-          <div>curl -sSL https://netwatch-api-production.up.railway.app/install.sh | sudo sh -s -- --remove</div>
-        </div>
-      </section>
+      <div className="grid gap-6 xl:grid-cols-2">
+        <section className="nw-card rounded-[1.5rem] p-5 sm:p-6">
+          <div className="mb-4 space-y-2">
+            <p className="text-sm font-semibold uppercase tracking-[0.18em] text-[var(--nw-text-soft)]">Install agent</p>
+            <h2 className="text-2xl font-semibold">One command, predictable rollout</h2>
+          </div>
+          <p className="mb-3 text-sm leading-7 nw-muted">
+            Create an API key above and use the command below if you want a generic install template instead of a pre-filled one.
+          </p>
+          <div className="nw-command break-all text-xs">
+            curl -sSL https://netwatch-api-production.up.railway.app/install.sh | sudo sh -s -- --api-key <span className="text-[var(--nw-warm)]">YOUR_API_KEY</span> --endpoint https://netwatch-api-production.up.railway.app/api/v1/ingest
+          </div>
+        </section>
+
+        <section className="nw-card rounded-[1.5rem] p-5 sm:p-6">
+          <div className="mb-4 space-y-2">
+            <p className="text-sm font-semibold uppercase tracking-[0.18em] text-[var(--nw-text-soft)]">Runbook snippets</p>
+            <h2 className="text-2xl font-semibold">Useful operator commands</h2>
+          </div>
+          <div className="nw-command space-y-1 text-xs">
+            <div><span className="text-[var(--nw-text-soft)]"># Check status</span></div>
+            <div>netwatch-agent status</div>
+            <div className="pt-1"><span className="text-[var(--nw-text-soft)]"># View config</span></div>
+            <div>netwatch-agent config</div>
+            <div className="pt-1"><span className="text-[var(--nw-text-soft)]"># Update to latest version</span></div>
+            <div>sudo netwatch-agent update</div>
+            <div className="pt-1"><span className="text-[var(--nw-text-soft)]"># View logs</span></div>
+            <div>journalctl -u netwatch-agent -f</div>
+            <div className="pt-1"><span className="text-[var(--nw-text-soft)]"># Remove agent</span></div>
+            <div>curl -sSL https://netwatch-api-production.up.railway.app/install.sh | sudo sh -s -- --remove</div>
+          </div>
+        </section>
+      </div>
     </div>
   )
 }

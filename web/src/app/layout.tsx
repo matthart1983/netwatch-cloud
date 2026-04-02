@@ -1,18 +1,22 @@
 import type { Metadata } from 'next'
-import { Geist, Geist_Mono } from 'next/font/google'
+import { IBM_Plex_Mono, Sora } from 'next/font/google'
 import './globals.css'
 import { AuthProvider } from '@/lib/auth'
 import { Nav } from './nav'
 
-const sans = Geist({ subsets: ['latin'], variable: '--font-sans' })
-const mono = Geist_Mono({ subsets: ['latin'], variable: '--font-mono' })
+const sans = Sora({ subsets: ['latin'], variable: '--font-sans' })
+const mono = IBM_Plex_Mono({ subsets: ['latin'], variable: '--font-mono', weight: ['400', '500'] })
 
 export const metadata: Metadata = {
-  title: 'NetWatch Cloud',
-  description: 'Lightweight network monitoring for Linux fleets. Real-time metrics, instant alerts, 2-minute setup.',
+  metadataBase: new URL(process.env.NEXT_PUBLIC_APP_URL ?? 'https://netwatch-web-production.up.railway.app'),
+  title: {
+    default: 'NetWatch Cloud',
+    template: '%s · NetWatch Cloud',
+  },
+  description: 'Professional-grade network monitoring for Linux fleets. Fast install, real-time health, and alerts without the Datadog sprawl.',
   openGraph: {
     title: 'NetWatch Cloud',
-    description: 'Network monitoring without the complexity.',
+    description: 'Professional-grade network monitoring for Linux fleets.',
     images: ['/og.svg'],
   },
   icons: {
@@ -23,10 +27,10 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en" className="dark">
-      <body className={`${sans.variable} ${mono.variable} font-sans bg-zinc-950 text-zinc-100 min-h-screen`}>
+      <body className={`${sans.variable} ${mono.variable} font-sans min-h-screen antialiased`}>
         <AuthProvider>
           <Nav />
-          <main className="max-w-6xl mx-auto px-4 py-6">
+          <main className="relative mx-auto w-full max-w-[1320px] px-4 pb-16 pt-8 sm:px-6 lg:px-8">
             {children}
           </main>
         </AuthProvider>

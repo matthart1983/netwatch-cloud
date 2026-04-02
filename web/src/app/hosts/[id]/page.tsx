@@ -24,8 +24,7 @@ const RANGES: { label: string; value: TimeRange; hours: number }[] = [
 
 const TOOLTIP_STYLE = { background: '#1a1a1a', border: '1px solid #333', fontSize: 12 }
 
-const PANEL_IDS = ['latency-loss', 'network-conn', 'cpu-memory', 'cpu-per-core', 'load-swap', 'disk-util', 'tcp-states'] as const
-type PanelId = typeof PANEL_IDS[number]
+type PanelId = 'latency-loss' | 'network-conn' | 'cpu-memory' | 'cpu-per-core' | 'load-swap' | 'disk-util' | 'tcp-states'
 
 const LS_KEY = 'host-dashboard-state-v4'
 
@@ -406,7 +405,7 @@ export default function HostDetailPage() {
   const connStats = useMemo(() => computeStats(chartData, 'connections'), [chartData])
 
   if (loading || !host) {
-    return <div className="text-zinc-400 mt-10">Loading...</div>
+    return <div className="mt-10 nw-muted">Loading host details...</div>
   }
 
   const lastSeenSecs = host.last_seen_at ? timeAgo(host.last_seen_at) + secondsAgo : null
@@ -419,11 +418,11 @@ export default function HostDetailPage() {
   return (
     <div className="pb-8" style={{ width: '100vw', marginLeft: 'calc(-50vw + 50%)', paddingLeft: '1.5rem', paddingRight: '1.5rem' }}>
       {/* === Health Summary Header === */}
-      <div className="sticky top-0 z-20 bg-zinc-950/95 backdrop-blur border-b border-zinc-800 -mx-6 px-6 py-3 mb-4">
+      <div className="sticky top-0 z-20 -mx-6 mb-4 border-b border-white/6 bg-[#08111a]/86 px-6 py-4 backdrop-blur-xl">
         <div className="flex items-center justify-between flex-wrap gap-3">
           <div className="flex items-center gap-3">
-            <button onClick={() => router.push('/')} className="text-zinc-400 hover:text-zinc-100 text-lg">←</button>
-            <h1 className="text-lg font-bold truncate">{host.hostname}</h1>
+            <button onClick={() => router.push('/')} className="nw-button-ghost px-3 py-2 text-sm">Back</button>
+            <h1 className="truncate text-xl font-semibold">{host.hostname}</h1>
             <span className={`px-2.5 py-0.5 rounded-full text-xs font-medium border ${statusColors[health.status]}`}>
               {health.status === 'healthy' ? 'Healthy' : health.status === 'warning' ? 'Warning' : 'Critical'}
             </span>
@@ -440,19 +439,19 @@ export default function HostDetailPage() {
               </span>
             )}
             {lastSeenSecs != null && (
-              <span className="text-xs text-zinc-500 tabular-nums min-w-[7rem] text-right">Last seen {lastSeenSecs}s ago</span>
+              <span className="min-w-[7rem] text-right text-xs tabular-nums nw-subtle">Last seen {lastSeenSecs}s ago</span>
             )}
             <button
               onClick={() => setPaused(p => !p)}
-              className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium border transition-colors ${
+              className={`flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium transition-colors ${
                 paused
-                  ? 'bg-zinc-800 text-zinc-400 border-zinc-700 hover:border-zinc-600'
+                  ? 'bg-white/6 text-[var(--nw-text-muted)] border-white/10 hover:border-white/16'
                   : 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30 hover:bg-emerald-500/25'
               }`}
             >
               {paused ? <><Pause size={12} /> Paused</> : <><Circle size={8} fill="currentColor" className="animate-pulse" /> Live</>}
             </button>
-            {lastFetch && <span className="text-xs text-zinc-600 tabular-nums min-w-[3rem] text-right">{secondsAgo}s ago</span>}
+            {lastFetch && <span className="min-w-[3rem] text-right text-xs tabular-nums nw-subtle">{secondsAgo}s ago</span>}
           </div>
         </div>
       </div>
@@ -461,7 +460,7 @@ export default function HostDetailPage() {
       <div className="mb-4">
         <button
           onClick={() => setHostInfoOpen(o => !o)}
-          className="flex items-center gap-2 text-sm text-zinc-400 hover:text-zinc-200 transition-colors"
+          className="flex items-center gap-2 text-sm nw-muted hover:text-[var(--nw-text)] transition-colors"
         >
           {hostInfoOpen ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
           <span className="font-medium">Host Information</span>
@@ -496,13 +495,14 @@ export default function HostDetailPage() {
       </div>
 
       {/* === Time Range + Dashboard Toolbar === */}
-      <div className="flex items-center justify-between mb-4">
+      <div className="mb-4 flex items-center justify-between">
         <div className="flex gap-2">
           {RANGES.map(r => (
             <button
               key={r.value}
               onClick={() => { setRange(r.value); setLoading(true) }}
-              className={`px-3 py-1 rounded text-sm ${range === r.value ? 'bg-emerald-600 text-white' : 'bg-zinc-800 text-zinc-400 hover:text-zinc-100'}`}
+              className={`nw-tab ${range === r.value ? '' : ''}`}
+              data-active={range === r.value}
             >
               {r.label}
             </button>
@@ -512,7 +512,7 @@ export default function HostDetailPage() {
           <button
             onClick={toggleLock}
             className={`flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-medium transition-colors ${
-              locked ? 'bg-yellow-500/15 text-yellow-400 border border-yellow-500/30' : 'bg-zinc-800 text-zinc-400 hover:text-zinc-100 border border-zinc-700'
+              locked ? 'bg-yellow-500/15 text-yellow-400 border border-yellow-500/30' : 'bg-white/6 text-[var(--nw-text-muted)] hover:text-[var(--nw-text)] border border-white/10'
             }`}
             title={locked ? 'Unlock panels' : 'Lock panels (prevent collapse)'}
           >
@@ -521,7 +521,7 @@ export default function HostDetailPage() {
           </button>
           <button
             onClick={resetLayout}
-            className="flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-medium bg-zinc-800 text-zinc-400 hover:text-zinc-100 border border-zinc-700 transition-colors"
+            className="flex items-center gap-1.5 rounded border border-white/10 bg-white/6 px-2.5 py-1 text-xs font-medium text-[var(--nw-text-muted)] transition-colors hover:text-[var(--nw-text)]"
             title="Reset all panels"
           >
             <RotateCcw size={12} />
@@ -532,7 +532,7 @@ export default function HostDetailPage() {
 
       {/* === Chart Grid === */}
       {chartData.length === 0 ? (
-        <p className="text-zinc-400">No data for this time range.</p>
+        <p className="nw-muted">No data for this time range.</p>
       ) : (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
           {panelOrder.map(panelId => {
@@ -580,8 +580,8 @@ export default function HostDetailPage() {
 
 function InfoItem({ label, value }: { label: string; value: string }) {
   return (
-    <div className="bg-zinc-900 border border-zinc-800 rounded p-3">
-      <div className="text-xs text-zinc-500">{label}</div>
+    <div className="nw-card-soft rounded-[1rem] p-3">
+      <div className="text-xs uppercase tracking-[0.16em] nw-subtle">{label}</div>
       <div className="text-sm font-medium truncate">{value}</div>
     </div>
   )
@@ -591,8 +591,8 @@ function LiveStatCard({ label, value, delta, valueColor }: {
   label: string; value: string; delta: { arrow: string; color: string }; valueColor: string
 }) {
   return (
-    <div className="bg-zinc-900 border border-zinc-800 rounded-lg p-3">
-      <div className="text-xs text-zinc-500 mb-1">{label}</div>
+    <div className="nw-stat-card">
+      <div className="mb-1 text-xs uppercase tracking-[0.16em] nw-subtle">{label}</div>
       <div className={`text-lg font-semibold ${valueColor}`}>{value}</div>
       <div className={`text-xs mt-0.5 ${delta.color}`}>{delta.arrow}</div>
     </div>
@@ -635,7 +635,7 @@ function ChartPanel({ config, data, isCollapsed, isLocked, onToggleCollapse, onM
   if (isPerCore && lines.length === 0) return null
 
   return (
-    <div className="bg-zinc-900 border border-zinc-800 rounded-lg h-full flex flex-col overflow-hidden">
+    <div className="nw-card rounded-[1.3rem] h-full flex flex-col overflow-hidden">
       {/* Panel header */}
       <div className="flex items-center gap-2 px-3 py-2 border-b border-zinc-800/50 shrink-0">
         {!isLocked && (
@@ -689,8 +689,8 @@ function MaximizedOverlay({ config, data, onClose }: {
   const lines = config.id === 'cpu-per-core' ? getCoreLines(data) : config.lines
 
   return (
-    <div className="fixed inset-0 z-30 bg-zinc-950/98 flex flex-col" onClick={onClose}>
-      <div className="flex items-center gap-3 px-6 py-4 border-b border-zinc-800 shrink-0" onClick={e => e.stopPropagation()}>
+    <div className="fixed inset-0 z-30 flex flex-col bg-[#07111a]/96 backdrop-blur-xl" onClick={onClose}>
+      <div className="shrink-0 border-b border-white/6 px-6 py-4 flex items-center gap-3" onClick={e => e.stopPropagation()}>
         <h2 className="text-lg font-semibold text-zinc-200">{config.title}</h2>
         {primaryStat && (
           <div className="flex gap-3 ml-4">
@@ -723,8 +723,8 @@ function MaximizedOverlay({ config, data, onClose }: {
 
 function StatPill({ label, value }: { label: string; value: string }) {
   return (
-    <span className="text-xs text-zinc-500">
-      <span className="text-zinc-600">{label}</span> {value}
+    <span className="text-xs nw-muted">
+      <span className="nw-subtle">{label}</span> {value}
     </span>
   )
 }

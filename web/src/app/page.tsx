@@ -19,19 +19,27 @@ function formatBytes(bytes: number): string {
 
 function LandingNav() {
   return (
-    <nav className="border-b border-zinc-800 bg-zinc-950/80 backdrop-blur-sm sticky top-0 z-50">
-      <div className="max-w-6xl mx-auto px-4 h-14 flex items-center justify-between">
-        <span className="text-lg font-bold text-emerald-400">NetWatch</span>
-        <div className="hidden md:flex items-center gap-6">
-          <a href="#features" className="text-sm text-zinc-400 hover:text-zinc-100 transition-colors">Features</a>
-          <a href="#how-it-works" className="text-sm text-zinc-400 hover:text-zinc-100 transition-colors">How It Works</a>
-          <a href="#pricing" className="text-sm text-zinc-400 hover:text-zinc-100 transition-colors">Pricing</a>
-          <a href="#security" className="text-sm text-zinc-400 hover:text-zinc-100 transition-colors">Security</a>
+    <nav className="sticky top-0 z-50 border-b border-white/6 bg-[#08111a]/78 backdrop-blur-xl">
+      <div className="mx-auto flex h-[4.5rem] max-w-[1320px] items-center justify-between px-4 sm:px-6 lg:px-8">
+        <div className="flex items-center gap-3">
+          <div className="flex h-11 w-11 items-center justify-center rounded-2xl border border-[rgba(61,214,198,0.25)] bg-[rgba(61,214,198,0.12)] text-sm font-semibold text-[var(--nw-text)] shadow-[0_10px_30px_rgba(61,214,198,0.18)]">
+            NW
+          </div>
+          <div>
+            <div className="text-[0.68rem] font-semibold uppercase tracking-[0.24em] text-[var(--nw-text-soft)]">NetWatch Cloud</div>
+            <div className="text-sm font-semibold text-[var(--nw-text)]">Fleet intelligence for Linux infrastructure</div>
+          </div>
+        </div>
+        <div className="hidden items-center gap-6 md:flex">
+          <a href="#features" className="text-sm nw-muted hover:text-[var(--nw-text)]">Features</a>
+          <a href="#how-it-works" className="text-sm nw-muted hover:text-[var(--nw-text)]">How it works</a>
+          <a href="#pricing" className="text-sm nw-muted hover:text-[var(--nw-text)]">Pricing</a>
+          <a href="#security" className="text-sm nw-muted hover:text-[var(--nw-text)]">Security</a>
         </div>
         <div className="flex items-center gap-3">
-          <Link href="/login" className="text-sm text-zinc-400 hover:text-zinc-100 transition-colors">Login</Link>
-          <Link href="/register" className="text-sm bg-emerald-600 hover:bg-emerald-500 text-white px-3 py-1.5 rounded transition-colors">
-            Sign Up
+          <Link href="/login" className="nw-button-ghost px-4 py-2 text-sm">Sign in</Link>
+          <Link href="/register" className="nw-button-primary px-4 py-2 text-sm">
+            Start free trial
           </Link>
         </div>
       </div>
@@ -47,20 +55,20 @@ function DashboardMockup() {
   ]
 
   return (
-    <div className="bg-zinc-900 border border-zinc-800 rounded-xl overflow-hidden shadow-2xl shadow-emerald-900/10">
-      <div className="flex items-center gap-2 px-4 py-2.5 border-b border-zinc-800 bg-zinc-900/50">
+    <div className="nw-card rounded-[1.6rem] overflow-hidden">
+      <div className="flex items-center gap-2 border-b border-white/6 bg-white/[0.02] px-4 py-3">
         <div className="flex gap-1.5">
           <div className="w-3 h-3 rounded-full bg-zinc-700" />
           <div className="w-3 h-3 rounded-full bg-zinc-700" />
           <div className="w-3 h-3 rounded-full bg-zinc-700" />
         </div>
-        <span className="text-xs text-zinc-500 ml-2">netwatch-web-production.up.railway.app</span>
+        <span className="ml-2 text-xs nw-subtle">netwatch cloud • fleet overview</span>
       </div>
       <div className="p-4">
         <div className="text-sm font-semibold mb-3 text-zinc-300">Hosts</div>
         <div className="grid gap-2">
           {mockHosts.map(host => (
-            <div key={host.name} className="bg-zinc-800/50 border border-zinc-700/50 rounded-lg p-3 flex items-center justify-between">
+            <div key={host.name} className="rounded-[1rem] border border-white/6 bg-white/[0.03] p-3 flex items-center justify-between">
               <div className="flex items-center gap-2.5">
                 <span className={`w-2 h-2 rounded-full ${host.online ? 'bg-emerald-400' : 'bg-red-400'}`} />
                 <div>
@@ -97,14 +105,14 @@ function ChartMockup() {
     .join(' ')
 
   return (
-    <div className="bg-zinc-900 border border-zinc-800 rounded-xl overflow-hidden shadow-2xl shadow-emerald-900/10">
-      <div className="flex items-center gap-2 px-4 py-2.5 border-b border-zinc-800 bg-zinc-900/50">
+    <div className="nw-card rounded-[1.6rem] overflow-hidden">
+      <div className="flex items-center gap-2 border-b border-white/6 bg-white/[0.02] px-4 py-3">
         <div className="flex gap-1.5">
           <div className="w-3 h-3 rounded-full bg-zinc-700" />
           <div className="w-3 h-3 rounded-full bg-zinc-700" />
           <div className="w-3 h-3 rounded-full bg-zinc-700" />
         </div>
-        <span className="text-xs text-zinc-500 ml-2">Host Detail — web-prod-1</span>
+        <span className="ml-2 text-xs nw-subtle">host detail • latency timeline</span>
       </div>
       <div className="p-4">
         <div className="flex items-center justify-between mb-2">
@@ -134,18 +142,18 @@ function AlertMockup() {
   ]
 
   return (
-    <div className="bg-zinc-900 border border-zinc-800 rounded-xl overflow-hidden shadow-2xl shadow-emerald-900/10">
-      <div className="flex items-center gap-2 px-4 py-2.5 border-b border-zinc-800 bg-zinc-900/50">
+    <div className="nw-card rounded-[1.6rem] overflow-hidden">
+      <div className="flex items-center gap-2 border-b border-white/6 bg-white/[0.02] px-4 py-3">
         <div className="flex gap-1.5">
           <div className="w-3 h-3 rounded-full bg-zinc-700" />
           <div className="w-3 h-3 rounded-full bg-zinc-700" />
           <div className="w-3 h-3 rounded-full bg-zinc-700" />
         </div>
-        <span className="text-xs text-zinc-500 ml-2">Alerts — History</span>
+        <span className="ml-2 text-xs nw-subtle">alerts • recent event stream</span>
       </div>
       <div className="p-4 space-y-2">
         {events.map((e, i) => (
-          <div key={i} className="bg-zinc-800/50 border border-zinc-700/50 rounded-lg p-3 flex items-center gap-3">
+          <div key={i} className="rounded-[1rem] border border-white/6 bg-white/[0.03] p-3 flex items-center gap-3">
             <span className={`w-2 h-2 rounded-full shrink-0 ${e.state === 'firing' ? 'bg-red-400' : 'bg-emerald-400'}`} />
             <div className="flex-1 min-w-0">
               <div className="text-sm text-zinc-200 truncate">{e.message}</div>
@@ -164,43 +172,74 @@ function Landing() {
       <LandingNav />
 
       {/* Hero */}
-      <section className="px-4 pt-20 pb-12 text-center max-w-3xl mx-auto">
-        <div className="inline-flex items-center gap-2 bg-emerald-950/50 border border-emerald-800/50 text-emerald-400 text-xs px-3 py-1 rounded-full mb-6">
+      <section className="mx-auto grid max-w-[1320px] gap-10 px-4 pb-12 pt-16 lg:grid-cols-[1.05fr_0.95fr] lg:items-center sm:px-6 lg:px-8">
+        <div className="space-y-6">
+          <div className="nw-kicker">
           <Zap className="w-3 h-3" />
-          Now in Early Access
-        </div>
-        <h1 className="text-4xl md:text-5xl font-bold mb-4 tracking-tight">
-          Network monitoring<br />
-          <span className="text-emerald-400">without the complexity</span>
-        </h1>
-        <p className="text-lg text-zinc-400 mb-8 max-w-xl mx-auto">
-          Lightweight agent. Real-time dashboard. Instant alerts.
-          Monitor your Linux fleet in under 2 minutes — no config files, no YAML, no enterprise sales calls.
-        </p>
-        <div className="flex gap-3 justify-center flex-wrap">
-          <Link href="/register" className="bg-emerald-600 hover:bg-emerald-500 text-white px-6 py-2.5 rounded-lg font-medium transition-colors inline-flex items-center gap-2">
+            Early access
+          </div>
+          <div className="space-y-4">
+            <h1 className="text-5xl font-semibold tracking-[-0.06em] text-[var(--nw-text)] sm:text-6xl">
+              Network operations that look expensive,
+              <span className="block text-[var(--nw-accent)]">without acting expensive.</span>
+            </h1>
+            <p className="max-w-2xl text-lg leading-8 nw-muted">
+              A premium monitoring layer for Linux fleets: tiny Rust agent, real-time health, path-level visibility,
+              and alerting that feels designed instead of bolted on.
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-3">
+            <Link href="/register" className="nw-button-primary px-6 py-3 text-base">
             Get Started Free <ChevronRight className="w-4 h-4" />
           </Link>
-          <a href="#how-it-works" className="bg-zinc-800 hover:bg-zinc-700 text-zinc-200 px-6 py-2.5 rounded-lg font-medium transition-colors">
-            How It Works
+            <a href="#how-it-works" className="nw-button-secondary px-6 py-3 text-base">
+              See how it works
           </a>
+          </div>
+          <div className="grid gap-4 sm:grid-cols-3">
+            <div className="nw-stat-card">
+              <div className="text-xs uppercase tracking-[0.18em] nw-subtle">Open source proof</div>
+              <div className="mt-2 text-2xl font-semibold">445</div>
+              <div className="mt-1 text-sm nw-muted">GitHub stars on NetWatch</div>
+            </div>
+            <div className="nw-stat-card">
+              <div className="text-xs uppercase tracking-[0.18em] nw-subtle">Install path</div>
+              <div className="mt-2 text-2xl font-semibold">2 min</div>
+              <div className="mt-1 text-sm nw-muted">from account to first host</div>
+            </div>
+            <div className="nw-stat-card">
+              <div className="text-xs uppercase tracking-[0.18em] nw-subtle">Agent footprint</div>
+              <div className="mt-2 text-2xl font-semibold">~5 MB</div>
+              <div className="mt-1 text-sm nw-muted">single binary, zero YAML</div>
+            </div>
+          </div>
         </div>
-        <p className="text-xs text-zinc-500 mt-4">14-day free trial · No credit card required</p>
-      </section>
 
-      {/* Dashboard screenshot mockup */}
-      <section className="px-4 pb-16 max-w-4xl mx-auto">
-        <DashboardMockup />
+        <div className="space-y-4 lg:pl-4">
+          <DashboardMockup />
+          <div className="grid gap-4 md:grid-cols-2">
+            <ChartMockup />
+            <AlertMockup />
+          </div>
+        </div>
       </section>
 
       {/* Install */}
-      <section className="px-4 py-8 max-w-2xl mx-auto">
-        <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-6">
-          <p className="text-xs text-zinc-500 mb-2 font-medium uppercase tracking-wider">Install in one command</p>
-          <div className="font-mono text-sm text-emerald-400 break-all">
+      <section className="mx-auto max-w-4xl px-4 py-8 sm:px-6 lg:px-8">
+        <div className="nw-card rounded-[1.5rem] p-6">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+            <div>
+              <p className="text-xs font-medium uppercase tracking-[0.18em] nw-subtle">Install in one command</p>
+              <p className="mt-2 text-sm leading-7 nw-muted">Fast enough for a trial, polished enough for a production team evaluating alternatives.</p>
+            </div>
+            <div className="rounded-full border border-[rgba(61,214,198,0.18)] bg-[rgba(61,214,198,0.08)] px-3 py-2 text-xs font-semibold uppercase tracking-[0.18em] text-[#bffff8]">
+              14-day free trial · no card required
+            </div>
+          </div>
+          <div className="mt-5 nw-command break-all text-sm">
             curl -sSL https://netwatch-api-production.up.railway.app/install.sh | sh -s -- --api-key YOUR_KEY
           </div>
-          <p className="text-xs text-zinc-600 mt-3">
+          <p className="mt-3 text-xs nw-subtle">
             <a href="https://netwatch-api-production.up.railway.app/install.sh" target="_blank" rel="noopener noreferrer" className="hover:text-zinc-400 underline underline-offset-2">
               View the install script source ↗
             </a>
@@ -209,9 +248,9 @@ function Landing() {
       </section>
 
       {/* Features */}
-      <section id="features" className="px-4 py-16 max-w-4xl mx-auto">
-        <h2 className="text-2xl font-bold text-center mb-3">Everything you need. Nothing you don&apos;t.</h2>
-        <p className="text-zinc-500 text-center mb-10 max-w-lg mx-auto">Purpose-built for Linux infrastructure. No bloated agent, no complex config, no hidden costs.</p>
+      <section id="features" className="mx-auto max-w-6xl px-4 py-16 sm:px-6 lg:px-8">
+        <h2 className="nw-section-title text-center">Everything you need. Nothing that makes finance ask questions.</h2>
+        <p className="mx-auto mt-3 max-w-2xl text-center text-base leading-7 nw-muted">Purpose-built for Linux infrastructure teams that want premium visibility without inheriting an enterprise observability tax.</p>
         <div className="grid md:grid-cols-3 gap-6">
           <FeatureCard
             icon={<Activity className="w-5 h-5 text-emerald-400" />}
@@ -247,16 +286,9 @@ function Landing() {
       </section>
 
       {/* Product screenshots */}
-      <section className="px-4 py-8 max-w-5xl mx-auto">
-        <div className="grid md:grid-cols-2 gap-6">
-          <ChartMockup />
-          <AlertMockup />
-        </div>
-      </section>
-
       {/* How it works */}
-      <section id="how-it-works" className="px-4 py-16 max-w-3xl mx-auto">
-        <h2 className="text-2xl font-bold text-center mb-10">Up and running in 3 steps</h2>
+      <section id="how-it-works" className="mx-auto max-w-4xl px-4 py-16 sm:px-6 lg:px-8">
+        <h2 className="nw-section-title text-center">Operational visibility in three clean moves</h2>
         <div className="space-y-8">
           <Step number="1" title="Sign up" description="Create an account and get your API key. Takes 10 seconds." />
           <Step number="2" title="Install the agent" description="Run one curl command on your Linux server. The agent starts collecting metrics immediately — no config needed." />
@@ -265,9 +297,9 @@ function Landing() {
       </section>
 
       {/* What we collect */}
-      <section className="px-4 py-16 max-w-3xl mx-auto">
-        <h2 className="text-2xl font-bold text-center mb-10">What the agent collects</h2>
-        <div className="bg-zinc-900 border border-zinc-800 rounded-xl overflow-x-auto">
+      <section className="mx-auto max-w-4xl px-4 py-16 sm:px-6 lg:px-8">
+        <h2 className="nw-section-title text-center">What the agent collects</h2>
+        <div className="nw-table-shell mt-8 overflow-x-auto">
           <table className="w-full text-sm min-w-[480px]">
             <thead>
               <tr className="border-b border-zinc-800">
@@ -293,10 +325,10 @@ function Landing() {
       </section>
 
       {/* Why NetWatch vs alternatives */}
-      <section className="px-4 py-16 max-w-4xl mx-auto">
-        <h2 className="text-2xl font-bold text-center mb-3">Why NetWatch?</h2>
-        <p className="text-zinc-500 text-center mb-10 max-w-lg mx-auto">You have options. Here&apos;s how we compare.</p>
-        <div className="bg-zinc-900 border border-zinc-800 rounded-xl overflow-x-auto">
+      <section className="mx-auto max-w-5xl px-4 py-16 sm:px-6 lg:px-8">
+        <h2 className="nw-section-title text-center">Why NetWatch?</h2>
+        <p className="mx-auto mt-3 max-w-2xl text-center text-base leading-7 nw-muted">You have options. This is the version built for fast-moving infrastructure teams that still care about polish.</p>
+        <div className="nw-table-shell mt-8 overflow-x-auto">
           <table className="w-full text-sm min-w-[600px]">
             <thead>
               <tr className="border-b border-zinc-800">
@@ -361,9 +393,9 @@ function Landing() {
       </section>
 
       {/* Security */}
-      <section id="security" className="px-4 py-16 max-w-3xl mx-auto">
-        <h2 className="text-2xl font-bold text-center mb-3">Security & Privacy</h2>
-        <p className="text-zinc-500 text-center mb-10 max-w-lg mx-auto">Your infrastructure data is sensitive. Here&apos;s how we treat it.</p>
+      <section id="security" className="mx-auto max-w-5xl px-4 py-16 sm:px-6 lg:px-8">
+        <h2 className="nw-section-title text-center">Security & privacy</h2>
+        <p className="mx-auto mt-3 max-w-2xl text-center text-base leading-7 nw-muted">Your infrastructure data is sensitive. The product should behave like that from day one.</p>
         <div className="grid md:grid-cols-3 gap-6">
           <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-5">
             <Lock className="w-5 h-5 text-emerald-400 mb-3" />
@@ -394,9 +426,9 @@ function Landing() {
       </section>
 
       {/* Pricing */}
-      <section id="pricing" className="px-4 py-16 max-w-3xl mx-auto">
-        <h2 className="text-2xl font-bold text-center mb-3">Simple pricing</h2>
-        <p className="text-zinc-500 text-center mb-10">No per-host fees. No surprise overages. One price.</p>
+      <section id="pricing" className="mx-auto max-w-4xl px-4 py-16 sm:px-6 lg:px-8">
+        <h2 className="nw-section-title text-center">Simple pricing</h2>
+        <p className="mt-3 text-center text-base leading-7 nw-muted">No per-host fees. No surprise overages. One clean expansion path.</p>
         <div className="grid md:grid-cols-2 gap-6 max-w-2xl mx-auto">
           <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-6">
             <h3 className="font-bold text-lg mb-1">Free Trial</h3>
@@ -430,8 +462,8 @@ function Landing() {
       </section>
 
       {/* Built by */}
-      <section className="px-4 py-12 max-w-xl mx-auto text-center">
-        <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-6">
+      <section className="mx-auto max-w-3xl px-4 py-12 text-center sm:px-6 lg:px-8">
+        <div className="nw-card rounded-[1.5rem] p-6">
           <div className="w-12 h-12 rounded-full bg-emerald-600 flex items-center justify-center text-lg font-bold mx-auto mb-3">M</div>
           <p className="text-zinc-300 text-sm mb-1">
             Built by <strong>Matt</strong> — a solo founder who got tired of configuring Nagios and paying $15/host/month for Datadog just to check if his servers can reach the internet.
@@ -443,10 +475,10 @@ function Landing() {
       </section>
 
       {/* CTA */}
-      <section className="px-4 py-16 text-center">
-        <h2 className="text-2xl font-bold mb-4">Start monitoring in 2 minutes</h2>
-        <p className="text-zinc-400 mb-6">No credit card. No sales calls. Just sign up and install.</p>
-        <Link href="/register" className="bg-emerald-600 hover:bg-emerald-500 text-white px-8 py-3 rounded-lg font-medium text-lg transition-colors inline-flex items-center gap-2">
+      <section className="px-4 py-16 text-center sm:px-6 lg:px-8">
+        <h2 className="nw-section-title mb-4">Start monitoring in two minutes</h2>
+        <p className="mx-auto mb-6 max-w-xl text-base leading-7 nw-muted">No credit card. No sales call choreography. Just sign up, install, and see your fleet.</p>
+        <Link href="/register" className="nw-button-primary px-8 py-3 text-lg">
           Get Started Free <ChevronRight className="w-5 h-5" />
         </Link>
       </section>
@@ -462,21 +494,21 @@ function Landing() {
 
 function FeatureCard({ icon, title, description }: { icon: React.ReactNode; title: string; description: string }) {
   return (
-    <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-5">
+    <div className="nw-card-hover rounded-[1.35rem] p-5">
       <div className="mb-3">{icon}</div>
       <h3 className="font-semibold mb-1">{title}</h3>
-      <p className="text-sm text-zinc-400">{description}</p>
+      <p className="text-sm nw-muted">{description}</p>
     </div>
   )
 }
 
 function Step({ number, title, description }: { number: string; title: string; description: string }) {
   return (
-    <div className="flex gap-4">
-      <div className="w-8 h-8 rounded-full bg-emerald-600 flex items-center justify-center text-sm font-bold shrink-0">{number}</div>
+    <div className="nw-card rounded-[1.35rem] flex gap-4 p-5">
+      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-[rgba(61,214,198,0.14)] text-sm font-bold text-[var(--nw-accent)]">{number}</div>
       <div>
         <h3 className="font-semibold mb-1">{title}</h3>
-        <p className="text-sm text-zinc-400">{description}</p>
+        <p className="text-sm nw-muted">{description}</p>
       </div>
     </div>
   )
@@ -486,8 +518,8 @@ function MetricRow({ metric, source, interval }: { metric: string; source: strin
   return (
     <tr className="border-b border-zinc-800/50">
       <td className="p-3">{metric}</td>
-      <td className="p-3 font-mono text-xs text-zinc-500">{source}</td>
-      <td className="p-3 text-zinc-500">{interval}</td>
+      <td className="p-3 font-mono text-xs nw-subtle">{source}</td>
+      <td className="p-3 nw-subtle">{interval}</td>
     </tr>
   )
 }
@@ -606,15 +638,16 @@ export default function HostsPage() {
   }
 
   if (loading) {
-    return <div className="text-zinc-400 mt-10">Loading fleet...</div>
+    return <div className="mt-10 nw-muted">Loading fleet...</div>
   }
 
   if (hosts.length === 0) {
     return (
-      <div className="mt-10">
-        <h1 className="text-2xl font-bold mb-4">No hosts connected</h1>
-        <p className="text-zinc-400 mb-4">Install the NetWatch agent on a Linux server to get started.</p>
-        <p className="text-zinc-400 text-sm">Go to <Link href="/settings" className="text-emerald-400 hover:underline">Settings</Link> to get your API key and install command.</p>
+      <div className="nw-empty-state mt-10 max-w-3xl">
+        <span className="nw-kicker">First host onboarding</span>
+        <h1 className="mt-4 text-3xl font-semibold">No hosts connected yet</h1>
+        <p className="mb-4 mt-3 text-base leading-7 nw-muted">Install the NetWatch agent on a Linux server to bring the workspace to life.</p>
+        <p className="text-sm nw-muted">Go to <Link href="/settings" className="font-medium text-[var(--nw-accent)] hover:text-[#a7fff4]">Settings</Link> to grab your API key and a ready-to-paste install command.</p>
       </div>
     )
   }
@@ -632,62 +665,66 @@ export default function HostsPage() {
     : null
 
   return (
-    <div>
+    <div className="space-y-6">
       {billing?.plan === 'expired' && (
-        <div className="bg-red-950 border border-red-800 rounded-lg p-3 mb-4 text-sm text-red-300">
+        <div className="rounded-[1.1rem] border border-red-500/25 bg-red-500/10 p-4 text-sm text-red-200">
           Your trial has expired. <Link href="/settings" className="underline font-medium text-red-200">Add a payment method</Link> to continue monitoring.
         </div>
       )}
       {billing?.plan === 'past_due' && (
-        <div className="bg-orange-950 border border-orange-800 rounded-lg p-3 mb-4 text-sm text-orange-300">
+        <div className="rounded-[1.1rem] border border-orange-400/25 bg-orange-400/10 p-4 text-sm text-orange-200">
           Payment failed. <Link href="/settings" className="underline font-medium text-orange-200">Update your payment method</Link> to avoid service interruption.
         </div>
       )}
       {billing?.plan === 'trial' && trialDaysLeft !== null && trialDaysLeft <= 3 && (
-        <div className="bg-yellow-950 border border-yellow-800 rounded-lg p-3 mb-4 text-sm text-yellow-300">
+        <div className="rounded-[1.1rem] border border-amber-400/25 bg-amber-400/10 p-4 text-sm text-amber-100">
           Your trial expires in {trialDaysLeft} {trialDaysLeft === 1 ? 'day' : 'days'}. <Link href="/settings" className="underline font-medium text-yellow-200">Add a payment method</Link> to continue.
         </div>
       )}
 
       {/* Fleet Health Summary */}
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h1 className="text-2xl font-bold">Fleet Overview</h1>
-          <p className="text-sm text-zinc-500 mt-1">{hosts.length} {hosts.length === 1 ? 'host' : 'hosts'} monitored</p>
-        </div>
-        <div className="flex items-center gap-3">
-          <span className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
-            <span className="w-2 h-2 rounded-full bg-emerald-400" /> {online} online
-          </span>
-          {offline > 0 && (
-            <span className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium bg-red-500/15 text-red-400 border border-red-500/30">
-              <span className="w-2 h-2 rounded-full bg-red-400" /> {offline} offline
+      <section className="nw-card rounded-[1.75rem] p-6 sm:p-8">
+        <div className="flex flex-col gap-6 xl:flex-row xl:items-end xl:justify-between">
+          <div>
+            <span className="nw-kicker">Live control surface</span>
+            <h1 className="mt-4 text-4xl font-semibold tracking-[-0.05em]">Fleet overview</h1>
+            <p className="mt-3 max-w-2xl text-base leading-7 nw-muted">Monitor host health, spot drift, and jump into detail before a noisy issue becomes a real outage.</p>
+            <p className="mt-3 text-sm nw-subtle">{hosts.length} {hosts.length === 1 ? 'host' : 'hosts'} monitored</p>
+          </div>
+          <div className="flex flex-wrap items-center gap-3">
+            <span className="flex items-center gap-1.5 rounded-full border border-emerald-400/20 bg-emerald-400/10 px-3 py-2 text-xs font-semibold uppercase tracking-[0.14em] text-emerald-200">
+              <span className="h-2 w-2 rounded-full bg-emerald-300" /> {online} online
             </span>
-          )}
-          {hasWarnings && (
-            <span className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium bg-yellow-500/15 text-yellow-400 border border-yellow-500/30">
-              ⚠ warnings
-            </span>
-          )}
+            {offline > 0 && (
+              <span className="flex items-center gap-1.5 rounded-full border border-red-400/20 bg-red-400/10 px-3 py-2 text-xs font-semibold uppercase tracking-[0.14em] text-red-200">
+                <span className="h-2 w-2 rounded-full bg-red-300" /> {offline} offline
+              </span>
+            )}
+            {hasWarnings && (
+              <span className="flex items-center gap-1.5 rounded-full border border-amber-400/20 bg-amber-400/10 px-3 py-2 text-xs font-semibold uppercase tracking-[0.14em] text-amber-100">
+                ⚠ warnings present
+              </span>
+            )}
+          </div>
         </div>
-      </div>
+      </section>
 
       {/* Fleet Stats */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
-        <div className="bg-zinc-900 border border-zinc-800 rounded-lg p-3">
-          <div className="text-xs text-zinc-500 mb-1">Avg CPU</div>
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+        <div className="nw-stat-card">
+          <div className="text-xs uppercase tracking-[0.18em] nw-subtle">Avg CPU</div>
           <div className={`text-lg font-semibold tabular-nums ${metricColor(avgCpu, 80, 95)}`}>{avgCpu.toFixed(1)}%</div>
         </div>
-        <div className="bg-zinc-900 border border-zinc-800 rounded-lg p-3">
-          <div className="text-xs text-zinc-500 mb-1">Avg Memory</div>
+        <div className="nw-stat-card">
+          <div className="text-xs uppercase tracking-[0.18em] nw-subtle">Avg memory</div>
           <div className={`text-lg font-semibold tabular-nums ${metricColor(avgMem, 85, 95)}`}>{avgMem.toFixed(1)}%</div>
         </div>
-        <div className="bg-zinc-900 border border-zinc-800 rounded-lg p-3">
-          <div className="text-xs text-zinc-500 mb-1">Max Disk</div>
+        <div className="nw-stat-card">
+          <div className="text-xs uppercase tracking-[0.18em] nw-subtle">Max disk</div>
           <div className={`text-lg font-semibold tabular-nums ${metricColor(maxDisk, 80, 90)}`}>{maxDisk.toFixed(1)}%</div>
         </div>
-        <div className="bg-zinc-900 border border-zinc-800 rounded-lg p-3">
-          <div className="text-xs text-zinc-500 mb-1">Fleet Health</div>
+        <div className="nw-stat-card">
+          <div className="text-xs uppercase tracking-[0.18em] nw-subtle">Fleet health</div>
           <div className={`text-lg font-semibold ${offline > 0 ? 'text-red-400' : hasWarnings ? 'text-yellow-400' : 'text-emerald-400'}`}>
             {offline > 0 ? 'Degraded' : hasWarnings ? 'Warning' : 'Healthy'}
           </div>
@@ -702,7 +739,7 @@ export default function HostsPage() {
             <Link
               key={host.id}
               href={`/hosts/${host.id}`}
-              className="bg-zinc-900 border border-zinc-800 rounded-lg p-4 hover:border-zinc-600 transition-colors group"
+              className="nw-card-hover group rounded-[1.35rem] p-4 sm:p-5"
             >
               {/* Header */}
               <div className="flex items-center justify-between mb-3">
@@ -745,7 +782,7 @@ export default function HostsPage() {
               </div>
 
               {/* Footer */}
-              <div className="flex items-center justify-between text-[11px] text-zinc-500">
+              <div className="flex items-center justify-between text-[11px] nw-subtle">
                 <div className="flex items-center gap-3">
                   {host.os && <span>{host.os}</span>}
                   {host.cpu_cores && host.memory_total_bytes && (
@@ -884,7 +921,7 @@ function FleetChartPanel({ cfg, hosts, hostPoints, isCollapsed, isLocked, onTogg
   if (data.length === 0) return null
 
   return (
-    <div className="bg-zinc-900 border border-zinc-800 rounded-lg h-full flex flex-col overflow-hidden">
+    <div className="nw-card rounded-[1.25rem] h-full flex flex-col overflow-hidden">
       <div className="flex items-center gap-2 px-3 py-2 border-b border-zinc-800/50 shrink-0">
         {!isLocked && (
           <GripVertical size={14} className="text-zinc-600 hover:text-zinc-400 cursor-grab active:cursor-grabbing shrink-0" />
