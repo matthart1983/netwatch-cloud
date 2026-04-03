@@ -264,11 +264,6 @@ export default function HostDetailPage() {
 
   const toggleLock = useCallback(() => setLocked(prev => !prev), [])
 
-  const resetLayout = useCallback(() => {
-    setLocked(false)
-    updateDashState(() => ({ collapsed: {}, order: [] }))
-  }, [updateDashState])
-
   const handleDragStart = useCallback((id: string) => {
     dragItem.current = id
   }, [])
@@ -317,6 +312,13 @@ export default function HostDetailPage() {
       setLoading(false)
     }
   }, [token, id, range, router])
+
+  const resetLayout = useCallback(() => {
+    setLocked(false)
+    updateDashState(() => ({ collapsed: {}, order: [] }))
+    setLoading(true)
+    void fetchData()
+  }, [updateDashState, fetchData])
 
   useEffect(() => {
     if (authLoading) return
@@ -522,10 +524,10 @@ export default function HostDetailPage() {
           <button
             onClick={resetLayout}
             className="flex items-center gap-1.5 rounded border border-white/10 bg-white/6 px-2.5 py-1 text-xs font-medium text-[var(--nw-text-muted)] transition-colors hover:text-[var(--nw-text)]"
-            title="Reset all panels"
+            title="Reset panel layout and refresh host data"
           >
             <RotateCcw size={12} />
-            Reset
+            Reset View
           </button>
         </div>
       </div>

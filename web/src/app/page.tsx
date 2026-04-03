@@ -594,42 +594,41 @@ export default function HostsPage() {
   const [billing, setBilling] = useState<BillingInfo | null>(null)
   const [loading, setLoading] = useState(true)
 
+  const fetchAll = useCallback(async () => {
+    try {
+      const data = await getHosts()
+      setHosts(data)
+      const from = new Date(Date.now() - 3600 * 1000).toISOString()
+      const metricsMap: Record<string, HostMetrics> = {}
+      const pointsMap: Record<string, MetricPoint[]> = {}
+      await Promise.all(data.map(async (host) => {
+        try {
+          const m = await getMetrics(host.id, from)
+          metricsMap[host.id] = extractMetrics(m.points)
+          pointsMap[host.id] = m.points
+        } catch {
+          metricsMap[host.id] = { cpu: null, memPct: null, disk: null, load1m: null, latency: null, loss: null, connections: null, cpuHistory: [] }
+          pointsMap[host.id] = []
+        }
+      }))
+      setHostMetrics(metricsMap)
+      setHostPoints(pointsMap)
+    } catch {
+      // handled by api client redirect
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
   useEffect(() => {
     if (authLoading || !token) return
 
     getBilling().then(setBilling).catch(() => {})
 
-    async function fetchAll() {
-      try {
-        const data = await getHosts()
-        setHosts(data)
-        // Fetch last hour of metrics for each host
-        const from = new Date(Date.now() - 3600 * 1000).toISOString()
-        const metricsMap: Record<string, HostMetrics> = {}
-        const pointsMap: Record<string, MetricPoint[]> = {}
-        await Promise.all(data.map(async (host) => {
-          try {
-            const m = await getMetrics(host.id, from)
-            metricsMap[host.id] = extractMetrics(m.points)
-            pointsMap[host.id] = m.points
-          } catch {
-            metricsMap[host.id] = { cpu: null, memPct: null, disk: null, load1m: null, latency: null, loss: null, connections: null, cpuHistory: [] }
-            pointsMap[host.id] = []
-          }
-        }))
-        setHostMetrics(metricsMap)
-        setHostPoints(pointsMap)
-      } catch {
-        // handled by api client redirect
-      } finally {
-        setLoading(false)
-      }
-    }
-
     fetchAll()
     const interval = setInterval(fetchAll, 30_000)
     return () => clearInterval(interval)
-  }, [token, authLoading])
+  }, [token, authLoading, fetchAll])
 
   if (authLoading) return null
 
@@ -1101,10 +1100,10 @@ function FleetCharts({ hosts, hostPoints }: { hosts: Host[]; hostPoints: Record<
           <button
             onClick={resetLayout}
             className="flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-medium bg-zinc-800 text-zinc-400 hover:text-zinc-100 border border-zinc-700 transition-colors"
-            title="Reset all panels"
+            title="Reset panel layout and refresh fleet data"
           >
             <RotateCcw size={12} />
-            Reset
+            Reset View
           </button>
         </div>
       </div>
