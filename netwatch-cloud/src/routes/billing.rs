@@ -449,6 +449,7 @@ mod tests {
                 database_url: "postgres://postgres:postgres@localhost/netwatch_test".to_string(),
                 jwt_secret: "test-jwt-secret".to_string(),
                 bind_addr: "127.0.0.1:0".to_string(),
+                app_url: "https://app.example.com".to_string(),
                 resend_api_key: None,
                 stripe_secret_key: Some("sk_test_123".to_string()),
                 stripe_webhook_secret,

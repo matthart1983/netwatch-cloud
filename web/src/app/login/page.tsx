@@ -20,7 +20,7 @@ export default function LoginPage() {
     setLoading(true)
     try {
       const data = await apiLogin(email, password)
-      login(data.token, data.account_id)
+      login(data.access_token, data.account_id)
       router.push('/')
     } catch {
       setError('Invalid email or password')
@@ -90,6 +90,11 @@ export default function LoginPage() {
               placeholder="Enter your password"
               required
             />
+            <div className="mt-2 text-right">
+              <Link href="/forgot-password" className="text-sm font-medium text-[var(--nw-accent)] hover:text-[#a7fff4]">
+                Forgot password?
+              </Link>
+            </div>
           </div>
           <button
             type="submit"

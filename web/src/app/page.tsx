@@ -428,7 +428,7 @@ function Landing() {
       {/* Pricing */}
       <section id="pricing" className="mx-auto max-w-4xl px-4 py-16 sm:px-6 lg:px-8">
         <h2 className="nw-section-title text-center">Simple pricing</h2>
-        <p className="mt-3 text-center text-base leading-7 nw-muted">No per-host fees. No surprise overages. One clean expansion path.</p>
+        <p className="mb-10 mt-3 text-center text-base leading-7 nw-muted">No per-host fees. No surprise overages. One clean expansion path.</p>
         <div className="grid md:grid-cols-2 gap-6 max-w-2xl mx-auto">
           <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-6">
             <h3 className="font-bold text-lg mb-1">Free Trial</h3>

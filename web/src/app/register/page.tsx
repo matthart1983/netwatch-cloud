@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { register as apiRegister, login as apiLogin } from '@/lib/api'
+import { register as apiRegister } from '@/lib/api'
 import { useAuth } from '@/lib/auth'
 
 export default function RegisterPage() {
@@ -22,8 +22,7 @@ export default function RegisterPage() {
     try {
       const reg = await apiRegister(email, password)
       setApiKey(reg.api_key)
-      const data = await apiLogin(email, password)
-      login(data.token, data.account_id)
+      login(reg.access_token, reg.account_id)
     } catch {
       setError('Registration failed. Email may already be in use.')
     } finally {

@@ -131,6 +131,8 @@ async fn main() -> Result<()> {
         .route("/api/v1/auth/register", post(routes::auth::register))
         .route("/api/v1/auth/login", post(routes::auth::login))
         .route("/api/v1/auth/refresh", post(routes::auth::refresh))
+        .route("/api/v1/auth/forgot-password", post(routes::auth::forgot_password))
+        .route("/api/v1/auth/reset-password", post(routes::auth::reset_password))
         .route("/api/v1/hosts", get(routes::hosts::list_hosts))
         .route("/api/v1/hosts/{id}", get(routes::hosts::get_host).delete(routes::hosts::delete_host))
         .route("/api/v1/hosts/{id}/metrics", get(routes::hosts::get_metrics))

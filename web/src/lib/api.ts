@@ -36,7 +36,7 @@ export async function register(email: string, password: string) {
     method: 'POST',
     body: JSON.stringify({ email, password }),
   })
-  return data as { account_id: string; api_key: string }
+  return data as { account_id: string; api_key: string; access_token: string; refresh_token: string }
 }
 
 export async function login(email: string, password: string) {
@@ -44,7 +44,21 @@ export async function login(email: string, password: string) {
     method: 'POST',
     body: JSON.stringify({ email, password }),
   })
-  return data as { token: string; account_id: string }
+  return data as { access_token: string; refresh_token: string; account_id: string }
+}
+
+export async function requestPasswordReset(email: string): Promise<void> {
+  await fetchAPI('/api/v1/auth/forgot-password', {
+    method: 'POST',
+    body: JSON.stringify({ email }),
+  })
+}
+
+export async function resetPassword(token: string, password: string): Promise<void> {
+  await fetchAPI('/api/v1/auth/reset-password', {
+    method: 'POST',
+    body: JSON.stringify({ token, password }),
+  })
 }
 
 export interface Host {
