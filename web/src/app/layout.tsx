@@ -8,7 +8,7 @@ const sans = Sora({ subsets: ['latin'], variable: '--font-sans' })
 const mono = IBM_Plex_Mono({ subsets: ['latin'], variable: '--font-mono', weight: ['400', '500'] })
 
 export const metadata: Metadata = {
-  metadataBase: new URL(process.env.NEXT_PUBLIC_APP_URL ?? 'https://netwatch-web-production.up.railway.app'),
+  metadataBase: new URL(process.env.NEXT_PUBLIC_APP_URL ?? 'https://netwatchlabs.com'),
   title: {
     default: 'NetWatch Cloud',
     template: '%s · NetWatch Cloud',

@@ -2,7 +2,7 @@
 
 Lightweight network monitoring for small Linux fleets. A companion cloud service for [NetWatch TUI](https://github.com/matthart1983/netwatch).
 
-**🚀 Live at [netwatch-web-production.up.railway.app](https://netwatch-web-production.up.railway.app)**
+**🚀 Live at [netwatchlabs.com](https://netwatchlabs.com)**
 
 ## Components
 
