@@ -1,6 +1,13 @@
 -- High Priority Security Fixes (Issues 7-15)
 
 -- Issue #8: Add UNIQUE constraint for deduplication on (host_id, time)
+-- Clean up any historical duplicates first so the constraint can be added safely.
+DELETE FROM snapshots older
+USING snapshots newer
+WHERE older.host_id = newer.host_id
+  AND older.time = newer.time
+  AND older.id < newer.id;
+
 -- This prevents duplicate snapshots from the same host at the same time
 ALTER TABLE snapshots ADD CONSTRAINT unique_host_time UNIQUE(host_id, time);
 
