@@ -39,6 +39,12 @@ async fn main() -> Result<()> {
         Some("setup") => {
             return run_setup();
         }
+        Some("launchd-install") => {
+            return install_launchd_agent();
+        }
+        Some("launchd-remove") => {
+            return remove_launchd_agent();
+        }
         Some("config") => {
             return print_config();
         }
@@ -184,9 +190,14 @@ health_interval_secs = 30
     println!("Start the agent with:");
     println!("  netwatch-agent");
     println!();
-    println!("Or install as a service (Linux):");
-    println!("  sudo cp $(which netwatch-agent || echo ./target/release/netwatch-agent) /usr/local/bin/");
-    println!("  sudo systemctl enable --now netwatch-agent");
+    if cfg!(target_os = "macos") {
+        println!("Optional macOS dev service:");
+        println!("  netwatch-agent launchd-install");
+    } else {
+        println!("Or install as a service (Linux):");
+        println!("  sudo cp $(which netwatch-agent || echo ./target/release/netwatch-agent) /usr/local/bin/");
+        println!("  sudo systemctl enable --now netwatch-agent");
+    }
 
     Ok(())
 }
@@ -200,6 +211,8 @@ fn print_help() {
     println!("  netwatch-agent update      Download and install the latest version");
     println!("  netwatch-agent status      Show agent status");
     println!("  netwatch-agent config      Show current configuration");
+    println!("  netwatch-agent launchd-install   Install a per-user macOS dev service");
+    println!("  netwatch-agent launchd-remove    Remove the per-user macOS dev service");
     println!("  netwatch-agent version     Print version");
     println!("  netwatch-agent help        Show this help");
     println!();
@@ -211,22 +224,39 @@ fn print_help() {
 fn print_status() -> Result<()> {
     println!("netwatch-agent {}", VERSION);
 
-    // Check if systemd service is running
-    let output = std::process::Command::new("systemctl")
-        .args(["is-active", "netwatch-agent"])
-        .output();
+    #[cfg(target_os = "macos")]
+    {
+        let label = launchd_label();
+        let output = std::process::Command::new("launchctl")
+            .args(["list", &label])
+            .output();
 
-    match output {
-        Ok(o) => {
-            let status = String::from_utf8_lossy(&o.stdout).trim().to_string();
-            if status == "active" {
-                println!("Status: ✅ running");
-            } else {
-                println!("Status: ❌ {}", status);
-            }
+        match output {
+            Ok(o) if o.status.success() => println!("Status: ✅ launchd service loaded ({})", label),
+            Ok(_) => println!("Status: launchd service not loaded ({})", label),
+            Err(_) => println!("Status: launchctl not available (running outside launchd?)"),
         }
-        Err(_) => {
-            println!("Status: systemctl not available (running outside systemd?)");
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    {
+    // Check if systemd service is running
+        let output = std::process::Command::new("systemctl")
+            .args(["is-active", "netwatch-agent"])
+            .output();
+
+        match output {
+            Ok(o) => {
+                let status = String::from_utf8_lossy(&o.stdout).trim().to_string();
+                if status == "active" {
+                    println!("Status: ✅ running");
+                } else {
+                    println!("Status: ❌ {}", status);
+                }
+            }
+            Err(_) => {
+                println!("Status: systemctl not available (running outside systemd?)");
+            }
         }
     }
 
@@ -241,6 +271,113 @@ fn print_status() -> Result<()> {
     }
 
     Ok(())
+}
+
+#[cfg(target_os = "macos")]
+fn launchd_label() -> String {
+    "com.netwatch.agent.dev".to_string()
+}
+
+#[cfg(target_os = "macos")]
+fn launchd_plist_path() -> Result<std::path::PathBuf> {
+    let home = std::env::var("HOME")?;
+    Ok(std::path::Path::new(&home)
+        .join("Library")
+        .join("LaunchAgents")
+        .join(format!("{}.plist", launchd_label())))
+}
+
+#[cfg(target_os = "macos")]
+fn install_launchd_agent() -> Result<()> {
+    use std::fs;
+
+    let exe = std::env::current_exe()?;
+    let plist_path = launchd_plist_path()?;
+    let log_dir = plist_path.parent().and_then(|p| p.parent()).map(|p| p.join("Logs")).expect("launch agents parent");
+    fs::create_dir_all(plist_path.parent().expect("plist parent"))?;
+    fs::create_dir_all(&log_dir)?;
+
+    let stdout_path = log_dir.join("netwatch-agent.out.log");
+    let stderr_path = log_dir.join("netwatch-agent.err.log");
+    let config_path = config::AgentConfig::config_path();
+    let label = launchd_label();
+
+    let plist = format!(
+        r#"<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>{label}</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>{exe}</string>
+  </array>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>NETWATCH_CONFIG</key>
+    <string>{config_path}</string>
+  </dict>
+  <key>KeepAlive</key>
+  <true/>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>StandardOutPath</key>
+  <string>{stdout_path}</string>
+  <key>StandardErrorPath</key>
+  <string>{stderr_path}</string>
+</dict>
+</plist>
+"#,
+        label = label,
+        exe = exe.display(),
+        config_path = config_path,
+        stdout_path = stdout_path.display(),
+        stderr_path = stderr_path.display(),
+    );
+
+    fs::write(&plist_path, plist)?;
+
+    let _ = std::process::Command::new("launchctl")
+        .args(["unload", plist_path.to_str().unwrap()])
+        .status();
+
+    let status = std::process::Command::new("launchctl")
+        .args(["load", plist_path.to_str().unwrap()])
+        .status()?;
+
+    if !status.success() {
+        anyhow::bail!("failed to load launchd agent from {}", plist_path.display());
+    }
+
+    println!("✅ launchd agent installed for macOS dev use");
+    println!("  Label: {}", label);
+    println!("  Plist: {}", plist_path.display());
+    println!("  Logs:  {}", stdout_path.display());
+    Ok(())
+}
+
+#[cfg(not(target_os = "macos"))]
+fn install_launchd_agent() -> Result<()> {
+    anyhow::bail!("launchd-install is only available on macOS")
+}
+
+#[cfg(target_os = "macos")]
+fn remove_launchd_agent() -> Result<()> {
+    let plist_path = launchd_plist_path()?;
+    let _ = std::process::Command::new("launchctl")
+        .args(["unload", plist_path.to_str().unwrap()])
+        .status();
+    if plist_path.exists() {
+        std::fs::remove_file(&plist_path)?;
+    }
+    println!("✅ launchd agent removed ({})", plist_path.display());
+    Ok(())
+}
+
+#[cfg(not(target_os = "macos"))]
+fn remove_launchd_agent() -> Result<()> {
+    anyhow::bail!("launchd-remove is only available on macOS")
 }
 
 fn print_config() -> Result<()> {

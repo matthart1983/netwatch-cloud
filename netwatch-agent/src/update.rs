@@ -7,6 +7,12 @@ const REPO: &str = "matthart1983/netwatch-cloud";
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 
 pub fn self_update() -> Result<()> {
+    if cfg!(target_os = "macos") {
+        anyhow::bail!(
+            "self-update is only supported for the Linux service install. For macOS dev use, rebuild locally with `cargo build --package netwatch-agent`."
+        );
+    }
+
     let arch = detect_arch()?;
     let artifact = format!("netwatch-agent-linux-{}", arch);
 

@@ -186,6 +186,20 @@ if [ "$(id -u)" -ne 0 ]; then
   exit 1
 fi
 
+OS_NAME=$(uname -s)
+if [ "$OS_NAME" = "Darwin" ]; then
+  echo "Error: netwatch-agent service install is Linux-only."
+  echo ""
+  echo "For private macOS dev/debug support, build and run the agent locally instead:"
+  echo "  cargo build --package netwatch-agent"
+  echo "  ./target/debug/netwatch-agent setup"
+  echo "  ./target/debug/netwatch-agent"
+  echo ""
+  echo "Optional macOS dev service:"
+  echo "  ./target/debug/netwatch-agent launchd-install"
+  exit 1
+fi
+
 # ── Update mode: read existing config ────────────────────
 if [ "$MODE" = "update" ]; then
   if [ ! -f "$CONFIG_DIR/config.toml" ]; then

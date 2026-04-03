@@ -104,7 +104,7 @@ pub async fn ingest(
             memory_total_bytes = EXCLUDED.memory_total_bytes,
             last_seen_at = now(),
             is_online = true
-        WHERE account_id = $2
+        WHERE hosts.account_id = $2
         "#,
     )
     .bind(host_id)
