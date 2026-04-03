@@ -13,7 +13,132 @@ INSTALL_DIR="/usr/local/bin"
 CONFIG_DIR="/etc/netwatch-agent"
 DATA_DIR="/var/lib/netwatch-agent"
 SERVICE_USER="netwatch"
+SERVICE_GROUP="netwatch"
 MODE="install"
+
+find_nologin_shell() {
+  for shell in /usr/sbin/nologin /sbin/nologin /bin/false; do
+    if [ -x "$shell" ]; then
+      echo "$shell"
+      return 0
+    fi
+  done
+  echo "/bin/false"
+}
+
+refresh_service_group() {
+  if id "$SERVICE_USER" >/dev/null 2>&1; then
+    SERVICE_GROUP=$(id -gn "$SERVICE_USER" 2>/dev/null || echo "$SERVICE_USER")
+  fi
+}
+
+stop_service() {
+  if command -v systemctl >/dev/null 2>&1; then
+    systemctl stop netwatch-agent 2>/dev/null || true
+  elif command -v rc-service >/dev/null 2>&1; then
+    rc-service netwatch-agent stop 2>/dev/null || true
+  fi
+}
+
+disable_service() {
+  if command -v systemctl >/dev/null 2>&1; then
+    systemctl disable netwatch-agent 2>/dev/null || true
+    systemctl daemon-reload 2>/dev/null || true
+  elif command -v rc-update >/dev/null 2>&1; then
+    rc-update del netwatch-agent default 2>/dev/null || true
+  fi
+}
+
+ensure_service_user() {
+  if id "$SERVICE_USER" >/dev/null 2>&1; then
+    refresh_service_group
+    return 0
+  fi
+
+  echo "Creating service user '$SERVICE_USER' ..."
+  NOLOGIN_SHELL=$(find_nologin_shell)
+
+  if command -v useradd >/dev/null 2>&1; then
+    useradd --system --no-create-home --shell "$NOLOGIN_SHELL" "$SERVICE_USER"
+  elif command -v adduser >/dev/null 2>&1; then
+    adduser -S -D -H -s "$NOLOGIN_SHELL" "$SERVICE_USER" 2>/dev/null \
+      || adduser --system --disabled-password --no-create-home --shell "$NOLOGIN_SHELL" "$SERVICE_USER"
+  else
+    echo "Error: could not create service user. Install 'useradd' or 'adduser' and retry."
+    exit 1
+  fi
+
+  refresh_service_group
+}
+
+install_systemd_unit() {
+  cat > /etc/systemd/system/netwatch-agent.service <<EOF
+[Unit]
+Description=NetWatch Agent — network metrics collector
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=$INSTALL_DIR/netwatch-agent
+Restart=always
+RestartSec=5
+User=$SERVICE_USER
+Group=$SERVICE_GROUP
+EnvironmentFile=-$CONFIG_DIR/env
+
+NoNewPrivileges=no
+ProtectSystem=strict
+ProtectHome=yes
+ReadWritePaths=$DATA_DIR
+ReadOnlyPaths=$CONFIG_DIR /proc /sys
+PrivateTmp=yes
+AmbientCapabilities=CAP_NET_RAW
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+  systemctl daemon-reload
+  systemctl enable netwatch-agent
+  systemctl start netwatch-agent
+}
+
+install_openrc_service() {
+  cat > /etc/init.d/netwatch-agent <<EOF
+#!/sbin/openrc-run
+description="NetWatch Agent — network metrics collector"
+command="$INSTALL_DIR/netwatch-agent"
+command_user="$SERVICE_USER:$SERVICE_GROUP"
+pidfile="/run/netwatch-agent.pid"
+command_background="yes"
+
+depend() {
+  need net
+}
+EOF
+
+  chmod +x /etc/init.d/netwatch-agent
+  rc-update add netwatch-agent default
+  rc-service netwatch-agent start
+}
+
+enable_and_start_service() {
+  if command -v setcap >/dev/null 2>&1; then
+    setcap cap_net_raw+ep "$INSTALL_DIR/netwatch-agent" 2>/dev/null || true
+  fi
+
+  if command -v systemctl >/dev/null 2>&1; then
+    install_systemd_unit
+  elif command -v rc-service >/dev/null 2>&1 && command -v rc-update >/dev/null 2>&1 && [ -d /etc/init.d ]; then
+    install_openrc_service
+  else
+    echo "Error: supported service manager not found. systemd or OpenRC is required."
+    echo "       Binary was installed to $INSTALL_DIR/netwatch-agent"
+    echo "       Config was written to $CONFIG_DIR/config.toml"
+    exit 1
+  fi
+}
 
 # Parse args
 while [ $# -gt 0 ]; do
@@ -45,11 +170,11 @@ fi
 # ── Remove ───────────────────────────────────────────────
 if [ "$MODE" = "remove" ]; then
   echo "Removing NetWatch Agent..."
-  systemctl stop netwatch-agent 2>/dev/null || true
-  systemctl disable netwatch-agent 2>/dev/null || true
+  stop_service
+  disable_service
   rm -f /etc/systemd/system/netwatch-agent.service
+  rm -f /etc/init.d/netwatch-agent
   rm -f "$INSTALL_DIR/netwatch-agent"
-  systemctl daemon-reload
   echo "✅ Agent removed. Config preserved at $CONFIG_DIR"
   echo "   To delete config: rm -rf $CONFIG_DIR $DATA_DIR"
   exit 0
@@ -133,15 +258,10 @@ chmod +x /tmp/netwatch-agent
 NEW_VERSION=$(/tmp/netwatch-agent --version 2>/dev/null || echo "unknown")
 
 # ── Stop service if running ──────────────────────────────
-systemctl stop netwatch-agent 2>/dev/null || true
+stop_service
 
 # ── Create service user (install only) ───────────────────
-if [ "$MODE" = "install" ]; then
-  if ! id "$SERVICE_USER" >/dev/null 2>&1; then
-    echo "Creating service user '$SERVICE_USER' ..."
-    useradd --system --no-create-home --shell /usr/sbin/nologin "$SERVICE_USER"
-  fi
-fi
+ensure_service_user
 
 # ── Install binary ───────────────────────────────────────
 echo "Installing binary ($NEW_VERSION) to $INSTALL_DIR/netwatch-agent ..."
@@ -159,45 +279,15 @@ interval_secs = 15
 health_interval_secs = 30
 EOF
   chmod 600 "$CONFIG_DIR/config.toml"
-  chown "$SERVICE_USER:$SERVICE_USER" "$CONFIG_DIR/config.toml"
+  chown "$SERVICE_USER:$SERVICE_GROUP" "$CONFIG_DIR/config.toml"
 
   # Create data directory
   mkdir -p "$DATA_DIR"
-  chown "$SERVICE_USER:$SERVICE_USER" "$DATA_DIR"
+  chown "$SERVICE_USER:$SERVICE_GROUP" "$DATA_DIR"
 fi
 
-# ── Install systemd unit ─────────────────────────────────
-cat > /etc/systemd/system/netwatch-agent.service <<EOF
-[Unit]
-Description=NetWatch Agent — network metrics collector
-After=network-online.target
-Wants=network-online.target
-
-[Service]
-Type=simple
-ExecStart=$INSTALL_DIR/netwatch-agent
-Restart=always
-RestartSec=5
-User=$SERVICE_USER
-Group=$SERVICE_USER
-EnvironmentFile=-$CONFIG_DIR/env
-
-NoNewPrivileges=no
-ProtectSystem=strict
-ProtectHome=yes
-ReadWritePaths=$DATA_DIR
-ReadOnlyPaths=$CONFIG_DIR /proc /sys
-PrivateTmp=yes
-AmbientCapabilities=CAP_NET_RAW
-
-[Install]
-WantedBy=multi-user.target
-EOF
-
 # ── Enable and start ─────────────────────────────────────
-systemctl daemon-reload
-systemctl enable netwatch-agent
-systemctl start netwatch-agent
+enable_and_start_service
 
 echo ""
 if [ "$MODE" = "update" ]; then
