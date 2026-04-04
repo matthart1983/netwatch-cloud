@@ -1,6 +1,6 @@
 'use client'
 
-import { createContext, useContext, useState, useEffect, ReactNode } from 'react'
+import { createContext, useContext, useEffect, useReducer, ReactNode } from 'react'
 import { useRouter } from 'next/navigation'
 
 interface AuthContextType {
@@ -19,39 +19,81 @@ const AuthContext = createContext<AuthContextType>({
   logout: () => {},
 })
 
+interface AuthState {
+  token: string | null
+  accountId: string | null
+  isLoading: boolean
+}
+
+type AuthAction =
+  | { type: 'hydrate'; token: string | null; accountId: string | null }
+  | { type: 'login'; token: string; accountId: string }
+  | { type: 'logout' }
+
+function authReducer(state: AuthState, action: AuthAction): AuthState {
+  switch (action.type) {
+    case 'hydrate':
+      return {
+        token: action.token,
+        accountId: action.accountId,
+        isLoading: false,
+      }
+    case 'login':
+      return {
+        token: action.token,
+        accountId: action.accountId,
+        isLoading: false,
+      }
+    case 'logout':
+      return {
+        token: null,
+        accountId: null,
+        isLoading: false,
+      }
+    default:
+      return state
+  }
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [token, setToken] = useState<string | null>(null)
-  const [accountId, setAccountId] = useState<string | null>(null)
-  const [isLoading, setIsLoading] = useState(true)
+  const [state, dispatch] = useReducer(authReducer, {
+    token: null,
+    accountId: null,
+    isLoading: true,
+  })
   const router = useRouter()
 
   useEffect(() => {
-    const savedToken = localStorage.getItem('token')
-    const savedAccountId = localStorage.getItem('accountId')
-    if (savedToken) {
-      setToken(savedToken)
-      setAccountId(savedAccountId)
-    }
-    setIsLoading(false)
+    dispatch({
+      type: 'hydrate',
+      token: localStorage.getItem('token'),
+      accountId: localStorage.getItem('accountId'),
+    })
   }, [])
 
   const loginFn = (newToken: string, newAccountId: string) => {
     localStorage.setItem('token', newToken)
     localStorage.setItem('accountId', newAccountId)
-    setToken(newToken)
-    setAccountId(newAccountId)
+    dispatch({ type: 'login', token: newToken, accountId: newAccountId })
   }
 
   const logout = () => {
     localStorage.removeItem('token')
     localStorage.removeItem('accountId')
-    setToken(null)
-    setAccountId(null)
+    dispatch({ type: 'logout' })
     router.push('/login')
   }
 
   return (
-    <AuthContext value={{ token, accountId, isLoading, login: loginFn, logout }}>
+    <AuthContext
+      value={{
+        token: state.token,
+        accountId: state.accountId,
+        isLoading: state.isLoading,
+        login: loginFn,
+        logout,
+      }}
+    >
       {children}
     </AuthContext>
   )

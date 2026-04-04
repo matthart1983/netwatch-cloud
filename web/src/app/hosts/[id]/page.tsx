@@ -418,11 +418,14 @@ export default function HostDetailPage() {
   }
 
   return (
-    <div className="pb-8" style={{ width: '100vw', marginLeft: 'calc(-50vw + 50%)', paddingLeft: '1.5rem', paddingRight: '1.5rem' }}>
+    <div
+      className="pb-8 px-4 sm:px-6 lg:px-8"
+      style={{ width: '100vw', marginLeft: 'calc(-50vw + 50%)' }}
+    >
       {/* === Health Summary Header === */}
-      <div className="sticky top-0 z-20 -mx-6 mb-4 border-b border-white/6 bg-[#08111a]/86 px-6 py-4 backdrop-blur-xl">
-        <div className="flex items-center justify-between flex-wrap gap-3">
-          <div className="flex items-center gap-3">
+      <div className="sticky top-0 z-20 -mx-4 mb-4 border-b border-white/6 bg-[#08111a]/86 px-4 py-4 backdrop-blur-xl sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="flex min-w-0 flex-wrap items-center gap-3">
             <button onClick={() => router.push('/')} className="nw-button-ghost px-3 py-2 text-sm">Back</button>
             <h1 className="truncate text-xl font-semibold">{host.hostname}</h1>
             <span className={`px-2.5 py-0.5 rounded-full text-xs font-medium border ${statusColors[health.status]}`}>
@@ -434,14 +437,14 @@ export default function HostDetailPage() {
               </span>
             )}
           </div>
-          <div className="flex items-center gap-4">
+          <div className="flex w-full flex-wrap items-center gap-x-4 gap-y-2 sm:w-auto sm:justify-end">
             {health.issues.length > 0 && (
-              <span className="text-xs text-yellow-400 hidden md:block truncate max-w-xs">
+              <span className="hidden max-w-xs truncate text-xs text-yellow-400 md:block">
                 {health.issues[0]}
               </span>
             )}
             {lastSeenSecs != null && (
-              <span className="min-w-[7rem] text-right text-xs tabular-nums nw-subtle">Last seen {lastSeenSecs}s ago</span>
+              <span className="text-xs tabular-nums nw-subtle sm:min-w-[7rem] sm:text-right">Last seen {lastSeenSecs}s ago</span>
             )}
             <button
               onClick={() => setPaused(p => !p)}
@@ -453,7 +456,7 @@ export default function HostDetailPage() {
             >
               {paused ? <><Pause size={12} /> Paused</> : <><Circle size={8} fill="currentColor" className="animate-pulse" /> Live</>}
             </button>
-            {lastFetch && <span className="min-w-[3rem] text-right text-xs tabular-nums nw-subtle">{secondsAgo}s ago</span>}
+            {lastFetch && <span className="text-xs tabular-nums nw-subtle sm:min-w-[3rem] sm:text-right">{secondsAgo}s ago</span>}
           </div>
         </div>
       </div>
