@@ -419,47 +419,53 @@ export default function HostDetailPage() {
 
   return (
     <div
-      className="-mt-8 pb-8 px-4 sm:px-6 lg:px-8"
+      className="-mt-8 pb-8"
       style={{ width: '100vw', marginLeft: 'calc(-50vw + 50%)' }}
     >
       {/* === Health Summary Header === */}
-      <div className="sticky top-0 z-20 -mx-4 mb-4 border-b border-white/6 bg-[#08111a]/86 px-4 py-4 backdrop-blur-xl sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div className="flex min-w-0 flex-wrap items-center gap-3">
-            <button onClick={() => router.push('/')} className="nw-button-ghost px-3 py-2 text-sm">Back</button>
-            <h1 className="truncate text-xl font-semibold">{host.hostname}</h1>
-            <span className={`px-2.5 py-0.5 rounded-full text-xs font-medium border ${statusColors[health.status]}`}>
-              {health.status === 'healthy' ? 'Healthy' : health.status === 'warning' ? 'Warning' : 'Critical'}
-            </span>
-            {health.alertCount > 0 && (
-              <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-red-500/20 text-red-400 border border-red-500/30">
-                {health.alertCount} {health.alertCount === 1 ? 'issue' : 'issues'}
-              </span>
-            )}
-          </div>
-          <div className="flex w-full flex-wrap items-center gap-x-4 gap-y-2 sm:w-auto sm:justify-end">
-            {health.issues.length > 0 && (
-              <span className="hidden max-w-xs truncate text-xs text-yellow-400 md:block">
-                {health.issues[0]}
-              </span>
-            )}
-            {lastSeenSecs != null && (
-              <span className="text-xs tabular-nums nw-subtle sm:min-w-[7rem] sm:text-right">Last seen {lastSeenSecs}s ago</span>
-            )}
-            <button
-              onClick={() => setPaused(p => !p)}
-              className={`flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium transition-colors ${
-                paused
-                  ? 'bg-white/6 text-[var(--nw-text-muted)] border-white/10 hover:border-white/16'
-                  : 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30 hover:bg-emerald-500/25'
-              }`}
-            >
-              {paused ? <><Pause size={12} /> Paused</> : <><Circle size={8} fill="currentColor" className="animate-pulse" /> Live</>}
-            </button>
-            {lastFetch && <span className="text-xs tabular-nums nw-subtle sm:min-w-[3rem] sm:text-right">{secondsAgo}s ago</span>}
+      <div className="sticky top-0 z-20 mb-4 border-b border-white/6 bg-[#08111a]/92 backdrop-blur-xl">
+        <div className="px-4 py-4 sm:px-6 lg:px-8">
+          <div className="flex flex-col gap-3">
+            <div className="flex min-w-0 flex-wrap items-center gap-3">
+              <button onClick={() => router.push('/')} className="nw-button-ghost px-3 py-2 text-sm">Back</button>
+              <h1 className="min-w-0 flex-1 truncate text-xl font-semibold">{host.hostname}</h1>
+              <button
+                onClick={() => setPaused(p => !p)}
+                className={`flex shrink-0 items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium transition-colors ${
+                  paused
+                    ? 'bg-white/6 text-[var(--nw-text-muted)] border-white/10 hover:border-white/16'
+                    : 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30 hover:bg-emerald-500/25'
+                }`}
+              >
+                {paused ? <><Pause size={12} /> Paused</> : <><Circle size={8} fill="currentColor" className="animate-pulse" /> Live</>}
+              </button>
+            </div>
+            <div className="flex flex-wrap items-center gap-2 gap-y-2 sm:justify-between">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className={`rounded-full border px-2.5 py-0.5 text-xs font-medium ${statusColors[health.status]}`}>
+                  {health.status === 'healthy' ? 'Healthy' : health.status === 'warning' ? 'Warning' : 'Critical'}
+                </span>
+                {health.alertCount > 0 && (
+                  <span className="rounded-full border border-red-500/30 bg-red-500/20 px-2 py-0.5 text-xs font-medium text-red-400">
+                    {health.alertCount} {health.alertCount === 1 ? 'issue' : 'issues'}
+                  </span>
+                )}
+                {health.issues.length > 0 && (
+                  <span className="hidden max-w-xs truncate text-xs text-yellow-400 md:block">
+                    {health.issues[0]}
+                  </span>
+                )}
+              </div>
+              <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs tabular-nums nw-subtle sm:justify-end">
+                {lastSeenSecs != null && <span>Last seen {lastSeenSecs}s ago</span>}
+                {lastFetch && <span>{secondsAgo}s ago</span>}
+              </div>
+            </div>
           </div>
         </div>
       </div>
+
+      <div className="px-4 sm:px-6 lg:px-8">
 
       {/* === Collapsible Host Info Panel === */}
       <div className="mb-4">
@@ -577,6 +583,7 @@ export default function HostDetailPage() {
           onClose={() => setMaximizedPanel(null)}
         />
       )}
+      </div>
     </div>
   )
 }
