@@ -419,7 +419,7 @@ export default function HostDetailPage() {
 
   return (
     <div
-      className="pb-8 px-4 sm:px-6 lg:px-8"
+      className="-mt-8 pb-8 px-4 sm:px-6 lg:px-8"
       style={{ width: '100vw', marginLeft: 'calc(-50vw + 50%)' }}
     >
       {/* === Health Summary Header === */}
